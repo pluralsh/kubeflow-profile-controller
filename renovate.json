@@ -1,5 +1,19 @@
 {
   "extends": [
-    "config:base"
-  ]
+    "config:base",
+    ":dependencyDashboard",
+    ":prHourlyLimitNone"
+  ],
+  "packageRules": [
+    {
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": true
+    }
+  ],
+  "separateMinorPatch": true
 }
