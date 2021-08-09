@@ -3,7 +3,7 @@ layout:
 - go.kubebuilder.io/v3
 multigroup: true
 projectName: profile-controller
-repo: gitlab.plural.sh/plural/kubeflow/profile-controller
+repo: github.com/pluralsh/kubeflow-profile-controller
 resources:
 - api:
     crdVersion: v1
