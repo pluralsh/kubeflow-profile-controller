@@ -557,6 +557,18 @@ func (r *ProfileReconciler) getAuthorizationPolicy(profileIns *profilev2alpha1.P
 				},
 			},
 			{
+				// Allow access from Kubeflow namespace for notebook culling
+				From: []*istioSecurity.Rule_From{
+					{
+						Source: &istioSecurity.Source{
+							Namespaces: []string{
+								"kubeflow",
+							},
+						},
+					},
+				},
+			},
+			{
 				To: []*istioSecurity.Rule_To{
 					{
 						Operation: &istioSecurity.Operation{
@@ -575,9 +587,9 @@ func (r *ProfileReconciler) getAuthorizationPolicy(profileIns *profilev2alpha1.P
 				},
 				When: []*istioSecurity.Condition{
 					{
-						// Allow access to above paths from the knative-serving namespace
+						// Allow access to above paths from the knative namespace
 						Key:    fmt.Sprintf("source.namespace"),
-						Values: []string{"knative-serving"},
+						Values: []string{"knative"},
 					},
 				},
 			},
