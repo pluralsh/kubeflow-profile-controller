@@ -41,7 +41,10 @@ func deserializeExtraResources(profile *profilev2alpha1.Profile) ([]*unstructure
 			return nil, varErr
 		}
 
-		if err := tmpl.Execute(&out, tempVars); err != nil {
+		varsMap := tempVars.(map[string]interface{})
+		varsMap["Namespace"] = profile.Name
+
+		if err := tmpl.Execute(&out, varsMap); err != nil {
 			return nil, err
 		}
 	}
