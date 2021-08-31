@@ -5,7 +5,7 @@ go 1.16
 require (
 	github.com/aws/aws-sdk-go v1.40.1
 	github.com/cenkalti/backoff v2.2.1+incompatible
-	github.com/fsnotify/fsnotify v1.4.9
+	github.com/fsnotify/fsnotify v1.5.1
 	// github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-logr/logr v0.4.0
 	github.com/goccy/go-yaml v1.8.10
