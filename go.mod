@@ -8,7 +8,7 @@ require (
 	github.com/fsnotify/fsnotify v1.4.9
 	// github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-logr/logr v0.4.0
-	github.com/goccy/go-yaml v1.8.10
+	github.com/goccy/go-yaml v1.9.4
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.14.0
 	github.com/pkg/errors v0.9.1
