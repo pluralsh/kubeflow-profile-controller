@@ -128,3 +128,93 @@ spec:
     port: 80
     protocol: TCP
     targetPort: 3000
+---
+# Section for crossplane AWS permissions
+apiVersion: identity.aws.crossplane.io/v1alpha1
+kind: IAMPolicy
+metadata:
+  name: s3-iam-policy-ns-{{ .Namespace }}
+  namespace: {{ .Namespace }}
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    description: test policy
+    document: |
+      {
+          "Version": "2012-10-17",
+          "Statement": [
+              {
+                "Sid": "AllowUserToSeeBucketListInTheConsole",
+                "Action": ["s3:ListAllMyBuckets", "s3:GetBucketLocation"],
+                "Effect": "Allow",
+                "Resource": ["arn:aws:s3:::*"]
+              },
+              {
+                "Sid": "AllowRootAndHomeListingOfCompanyBucket",
+                "Action": ["s3:ListBucket"],
+                "Effect": "Allow",
+                "Resource": ["arn:aws:s3:::pipelines-bucket"],
+                "Condition":{"StringEquals":{"s3:prefix":["","pipelines/", "pipelines/{{ .Namespace }}"],"s3:delimiter":["/"]}}
+                },
+              {
+                "Sid": "AllowListingOfUserFolder",
+                "Action": ["s3:ListBucket"],
+                "Effect": "Allow",
+                "Resource": ["arn:aws:s3:::pipelines-bucket"],
+                "Condition":{"StringLike":{"s3:prefix":["pipelines/{{ .Namespace }}/*"]}}
+              },
+              {
+                  "Sid": "kubeflowNSdavid",
+                  "Effect": "Allow",
+                  "Action": "s3:*",
+                  "Resource": [
+                      "arn:aws:s3:::pipelines-bucket/pipelines/{{ .Namespace }}/*"
+                  ]
+              }
+          ]
+      }
+    name: kubeflow-s3-test-policy
+  providerConfigRef:
+    name: aws-provider
+---
+apiVersion: identity.aws.crossplane.io/v1alpha1
+kind: IAMUser
+metadata:
+  name: iam-user-ns-{{ .Namespace }}
+  namespace: {{ .Namespace }}
+spec:
+  deletionPolicy: Delete
+  forProvider: {}
+  providerConfigRef:
+    name: aws-provider
+---
+apiVersion: identity.aws.crossplane.io/v1alpha1
+kind: IAMUserPolicyAttachment
+metadata:
+  name: policy-attachement-ns-{{ .Namespace }}
+  namespace: {{ .Namespace }}
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    userNameRef:
+      name: iam-user-ns-{{ .Namespace }}
+    policyArnRef:
+      name: s3-iam-policy-ns-{{ .Namespace }}
+  providerConfigRef:
+    name: aws-provider
+---
+apiVersion: identity.aws.crossplane.io/v1alpha1
+kind: IAMAccessKey
+metadata:
+  name: access-key-ns-{{ .Namespace }}
+  namespace: {{ .Namespace }}
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    userNameRef:
+      name: iam-user-ns-{{ .Namespace }}
+  writeConnectionSecretToRef:
+    name: pipelines-s3-secret
+    namespace: {{ .Namespace }}
+  providerConfigRef:
+    name: aws-provider
