@@ -24,6 +24,8 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	crossplaneAWS "github.com/crossplane/provider-aws/apis"
+	istioNetworkingClient "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioSecurityClient "istio.io/client-go/pkg/apis/security/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -45,6 +47,7 @@ const WORKLOADIDENTITY = "workload-identity"
 const DEFAULTNAMESPACELABELSPATH = "namespace-labels-path"
 const ISSUER = "issuer"
 const JWKSURI = "jwks-uri"
+const PIPELINEBUCKET = "pipeline-bucket"
 
 var (
 	scheme   = runtime.NewScheme()
@@ -58,6 +61,8 @@ func init() {
 	utilruntime.Must(kubefloworgv1beta1.AddToScheme(scheme))
 
 	utilruntime.Must(istioSecurityClient.AddToScheme(scheme))
+	utilruntime.Must(istioNetworkingClient.AddToScheme(scheme))
+	utilruntime.Must(crossplaneAWS.AddToScheme(scheme))
 	utilruntime.Must(kubefloworgv2alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
@@ -72,6 +77,7 @@ func main() {
 	var defaultNamespaceLabelsPath string
 	var issuer string
 	var jwksUri string
+	var pipelineBucket string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -83,6 +89,7 @@ func main() {
 	flag.StringVar(&defaultNamespaceLabelsPath, DEFAULTNAMESPACELABELSPATH, "/etc/profile-controller/namespace-labels.yaml", "A YAML file with a map of labels to be set on every Profile namespace")
 	flag.StringVar(&issuer, ISSUER, "", "The OIDC issuer to use for Kubeflow")
 	flag.StringVar(&jwksUri, JWKSURI, "", "The jwksUri for the OIDC issuer used for Kubeflow")
+	flag.StringVar(&pipelineBucket, PIPELINEBUCKET, "pipelines-bucket", "The bucket name used for Kubeflow Pipelines")
 
 	opts := zap.Options{
 		Development: true,
@@ -114,6 +121,7 @@ func main() {
 		WorkloadIdentity:           workloadIdentity,
 		Issuer:                     issuer,
 		JwksUri:                    jwksUri,
+		PipelineBucket:             pipelineBucket,
 		DefaultNamespaceLabelsPath: defaultNamespaceLabelsPath,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Profile")
