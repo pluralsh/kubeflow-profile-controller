@@ -22,8 +22,8 @@ require (
 	google.golang.org/api v0.50.0
 	istio.io/api v0.0.0-20211012192923-310f2a3f3c76
 	istio.io/client-go v1.11.4
-	k8s.io/api v0.22.3
-	k8s.io/apimachinery v0.22.3
+	k8s.io/api v0.22.4
+	k8s.io/apimachinery v0.22.4
 	k8s.io/client-go v0.22.3
 	sigs.k8s.io/controller-runtime v0.10.2
 	sigs.k8s.io/hierarchical-namespaces v0.9.0
