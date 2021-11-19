@@ -9,7 +9,7 @@ require (
 	github.com/crossplane/provider-aws v0.20.1
 	github.com/fsnotify/fsnotify v1.5.1
 	// github.com/ghodss/yaml v1.0.0 // indirect
-	github.com/go-logr/logr v0.4.0
+	github.com/go-logr/logr v1.2.0
 	github.com/goccy/go-yaml v1.9.4
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.17.0
