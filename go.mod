@@ -11,7 +11,7 @@ require (
 	// github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-logr/logr v0.4.0
 	github.com/goccy/go-yaml v1.9.4
-	github.com/onsi/ginkgo v1.16.4
+	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
 	github.com/pkg/errors v0.9.1
 	github.com/pluralsh/kubeflow-controller v0.0.0-20211029172714-2bf72d7bbf2a // indirect
