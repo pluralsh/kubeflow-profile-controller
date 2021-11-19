@@ -18,7 +18,7 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/tidwall/gjson v1.11.0
-	golang.org/x/oauth2 v0.0.0-20210628180205-a41e5a781914
+	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 	google.golang.org/api v0.50.0
 	istio.io/api v0.0.0-20211012192923-310f2a3f3c76
 	istio.io/client-go v1.11.4
