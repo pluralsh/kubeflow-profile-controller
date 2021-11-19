@@ -183,6 +183,8 @@ github.com/crossplane/crossplane-tools v0.0.0-20210916125540-071de511ae8e h1:7UM
 github.com/crossplane/crossplane-tools v0.0.0-20210916125540-071de511ae8e/go.mod h1:3GzY5sP0PVePArghBh5K4fGzS/3kM0R/NAZn5s7LXqw=
 github.com/crossplane/provider-aws v0.20.1 h1:AGE2awnQ5w/PvgyjyBPQXOZ/TvF18V961Tgg6NqmBto=
 github.com/crossplane/provider-aws v0.20.1/go.mod h1:jE6DoV+Z/iNf3855SdajQ9RkuNJgOdDE0kKBXpYyJ58=
+github.com/crossplane/provider-aws v0.20.3 h1:Wzdd8Td9dHqL8SukxoIaoXR32BOIhkMkJleRoZt2SHo=
+github.com/crossplane/provider-aws v0.20.3/go.mod h1:jE6DoV+Z/iNf3855SdajQ9RkuNJgOdDE0kKBXpYyJ58=
 github.com/dave/jennifer v1.4.1 h1:XyqG6cn5RQsTj3qlWQTKlRGAyrTcsk1kUmWdZBzRjDw=
 github.com/dave/jennifer v1.4.1/go.mod h1:7jEdnm+qBcxl8PC0zyp7vxcpSRnzXSt9r39tpTVGlwA=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
