@@ -19,12 +19,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - 
-        name: Get latest tag
-        id: latest_tag
-        uses: DavidSpek/gha-get-docker-hub-tags@0.1.15
-        with:
-          img: 'ghcr.io/pluralsh/kubeflow-profile-controller'
+      # - 
+      #   name: Get latest tag
+      #   id: latest_tag
+      #   uses: DavidSpek/gha-get-docker-hub-tags@0.1.15
+      #   with:
+      #     img: 'ghcr.io/pluralsh/kubeflow-profile-controller'
       -
         name: Docker meta
         id: meta
