@@ -17,7 +17,7 @@ require (
 	github.com/prometheus/client_golang v1.11.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
-	github.com/tidwall/gjson v1.8.1
+	github.com/tidwall/gjson v1.11.0
 	golang.org/x/oauth2 v0.0.0-20210628180205-a41e5a781914
 	google.golang.org/api v0.50.0
 	istio.io/api v0.0.0-20211012192923-310f2a3f3c76
