@@ -3,7 +3,7 @@ module github.com/pluralsh/kubeflow-profile-controller
 go 1.16
 
 require (
-	github.com/aws/aws-sdk-go v1.40.1
+	github.com/aws/aws-sdk-go v1.40.59
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/crossplane/crossplane-runtime v0.15.1-0.20210930095326-d5661210733b
 	github.com/crossplane/provider-aws v0.20.1
