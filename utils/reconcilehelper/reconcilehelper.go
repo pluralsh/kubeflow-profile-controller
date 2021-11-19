@@ -12,7 +12,6 @@ import (
 	istioNetworkingClient "istio.io/client-go/pkg/apis/networking/v1beta1"
 	// istioSecurity "istio.io/api/security/v1beta1"
 	crossplaneAWSIdentity "github.com/crossplane/provider-aws/apis/identity/v1alpha1"
-	platformv1alpha1 "github.com/pluralsh/kubeflow-controller/apis/platform/v1alpha1"
 	istioSecurityClient "istio.io/client-go/pkg/apis/security/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -338,34 +337,6 @@ func NetworkPolicy(ctx context.Context, r client.Client, networkPolicy *networkv
 		log.Info("Updating NetworkPolicy\n", "namespace", networkPolicy.Namespace, "name", networkPolicy.Name)
 		if err := r.Update(ctx, foundNetworkPolicy); err != nil {
 			log.Error(err, "Unable to update NetworkPolicy")
-			return err
-		}
-	}
-
-	return nil
-}
-
-// kubeflowEnvironment reconciles a Kubeflow Environment object.
-func KubeflowEnvironment(ctx context.Context, r client.Client, environment *platformv1alpha1.Environment, log logr.Logger) error {
-	foundEnvironment := &platformv1alpha1.Environment{}
-	justCreated := false
-	if err := r.Get(ctx, types.NamespacedName{Name: environment.Name, Namespace: environment.Namespace}, foundEnvironment); err != nil {
-		if apierrs.IsNotFound(err) {
-			log.Info("Creating Kubeflow Environment", "namespace", environment.Namespace, "name", environment.Name)
-			if err = r.Create(ctx, environment); err != nil {
-				log.Error(err, "Unable to create Kubeflow Environment")
-				return err
-			}
-			justCreated = true
-		} else {
-			log.Error(err, "Error getting Kubeflow Environment")
-			return err
-		}
-	}
-	if !justCreated && CopyKubeflowEnvironment(environment, foundEnvironment) {
-		log.Info("Updating Kubeflow Environmentg\n", "namespace", environment.Namespace, "name", environment.Name)
-		if err := r.Update(ctx, foundEnvironment); err != nil {
-			log.Error(err, "Unable to update Role Binding")
 			return err
 		}
 	}
@@ -968,37 +939,6 @@ func CopyNamespace(from, to *corev1.Namespace) bool {
 		requireUpdate = true
 	}
 	to.Annotations = from.Annotations
-
-	return requireUpdate
-}
-
-// CopyKubeflowEnvironment copies the owned fields from one Kubeflow Environment to another
-func CopyKubeflowEnvironment(from, to *platformv1alpha1.Environment) bool {
-	requireUpdate := false
-	for k, v := range to.Labels {
-		if from.Labels[k] != v {
-			requireUpdate = true
-		}
-	}
-	if len(to.Labels) == 0 && len(from.Labels) != 0 {
-		requireUpdate = true
-	}
-	to.Labels = from.Labels
-
-	for k, v := range to.Annotations {
-		if from.Annotations[k] != v {
-			requireUpdate = true
-		}
-	}
-	if len(to.Annotations) == 0 && len(from.Annotations) != 0 {
-		requireUpdate = true
-	}
-	to.Annotations = from.Annotations
-
-	if !reflect.DeepEqual(to.Spec, from.Spec) {
-		requireUpdate = true
-	}
-	to.Spec = from.Spec
 
 	return requireUpdate
 }
