@@ -20,7 +20,7 @@ require (
 	github.com/tidwall/gjson v1.11.0
 	golang.org/x/oauth2 v0.0.0-20210628180205-a41e5a781914
 	google.golang.org/api v0.50.0
-	istio.io/api v0.0.0-20211012192923-310f2a3f3c76
+	istio.io/api v0.0.0-20211124143550-67f86871f2a5
 	istio.io/client-go v1.11.4
 	k8s.io/api v0.22.3
 	k8s.io/apimachinery v0.22.3
