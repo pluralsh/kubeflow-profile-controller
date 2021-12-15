@@ -22,6 +22,8 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff"
@@ -29,13 +31,16 @@ import (
 
 	// "github.com/ghodss/yaml"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	crossplaneAWSIdentity "github.com/crossplane/provider-aws/apis/identity/v1alpha1"
+	crossplaneAWSIdentityv1alpha1 "github.com/crossplane/provider-aws/apis/identity/v1alpha1"
+	crossplaneAWSIdentityv1beta1 "github.com/crossplane/provider-aws/apis/identity/v1beta1"
+
+	crossplaneAWSEKSv1beta1 "github.com/crossplane/provider-aws/apis/eks/v1beta1"
 
 	"github.com/go-logr/logr"
 	"github.com/goccy/go-yaml"
 	"github.com/pkg/errors"
+	reconcilehelper "github.com/pluralsh/controller-reconcile-helper"
 	profilev2alpha1 "github.com/pluralsh/kubeflow-profile-controller/apis/kubeflow.org/v2alpha1"
-	reconcilehelper "github.com/pluralsh/kubeflow-profile-controller/utils/reconcilehelper"
 	istioNetworking "istio.io/api/networking/v1beta1"
 	istioSecurity "istio.io/api/security/v1beta1"
 	"istio.io/api/type/v1beta1"
@@ -213,6 +218,29 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		}
 	}
 
+	xplaneCluster := &crossplaneAWSEKSv1beta1.Cluster{}
+	if err := r.Get(ctx, types.NamespacedName{Name: "plural-bootstrapped"}, xplaneCluster); err != nil {
+		logger.Error(err, "failed to get CrossPlane cluster resource")
+		return reconcile.Result{}, err
+	}
+
+	accountIDRegexp := regexp.MustCompile(`\d{12}\b`)
+	regionRexexp := regexp.MustCompile(`^(?:[^:]+:){3}([^:]+).*`)
+	awsAccountID := accountIDRegexp.FindString(xplaneCluster.Spec.ForProvider.RoleArn)
+	awsRegion := regionRexexp.FindAllStringSubmatch(xplaneCluster.Status.AtProvider.Arn, -1)[0][1]
+	clusterName := xplaneCluster.ObjectMeta.Annotations["crossplane.io/external-name"]
+	oidcIssuer := strings.Replace(xplaneCluster.Status.AtProvider.Identity.OIDC.Issuer, "https://", "", -1)
+
+	instanceCopy := &profilev2alpha1.Profile{}
+	instanceCopy = instance
+
+	instance.Spec.ServiceAccountAnnotations = map[string]string{"eks.amazonaws.com/role-arn": fmt.Sprintf("arn:aws:iam::%s:role/kubeflow-assumable-role-ns-%s", awsAccountID, instance.Name)}
+
+	if err := r.Update(ctx, instance); err != nil {
+		logger.Error(err, "Error adding annotation to service account", "namespace", instanceCopy.Namespace)
+		return ctrl.Result{}, err
+	}
+
 	// Update Istio RequestAuthentication
 	// Create Istio RequestAuthentication in target namespace, which configures Istio with the OIDC provider.
 	if err = r.updateIstioRequestAuthentication(instance); err != nil {
@@ -232,20 +260,37 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	// Update service accounts
 	// Create service account "default-editor" in target namespace.
 	// "default-editor" would have kubeflowEdit permission: edit all resources in target namespace except rbac.
-	if err = r.updateServiceAccount(instance, DEFAULT_EDITOR, kubeflowEdit); err != nil {
-		logger.Error(err, "error Updating ServiceAccount", "namespace", instance.Name, "name",
-			"defaultEditor")
-		IncRequestErrorCounter("error updating ServiceAccount", SEVERITY_MAJOR)
-		return reconcile.Result{}, err
+	serviceAccounts := r.generateServiceAccounts(instance)
+	for _, serviceAccount := range serviceAccounts.Items {
+		sa := &serviceAccount
+		if err := ctrl.SetControllerReference(instance, sa, r.Scheme); err != nil {
+			logger.Error(err, "Error setting ControllerReference for Service Account")
+			return ctrl.Result{}, err
+		}
+		if err := reconcilehelper.ServiceAccount(ctx, r.Client, sa, logger); err != nil {
+			logger.Error(err, "Error reconciling Service Account", "namespace", sa.Namespace, "name", sa.Name)
+			IncRequestErrorCounter("error updating ServiceAccount", SEVERITY_MAJOR)
+			return ctrl.Result{}, err
+		}
 	}
-	// Create service account "default-viewer" in target namespace.
-	// "default-viewer" would have k8s default "view" permission: view all resources in target namespace.
-	if err = r.updateServiceAccount(instance, DEFAULT_VIEWER, kubeflowView); err != nil {
-		logger.Error(err, "error Updating ServiceAccount", "namespace", instance.Name, "name",
-			"defaultViewer")
-		IncRequestErrorCounter("error updating ServiceAccount", SEVERITY_MAJOR)
-		return reconcile.Result{}, err
-	}
+
+	// // Update service accounts
+	// // Create service account "default-editor" in target namespace.
+	// // "default-editor" would have kubeflowEdit permission: edit all resources in target namespace except rbac.
+	// if err = r.updateServiceAccount(instance, DEFAULT_EDITOR, kubeflowEdit); err != nil {
+	// 	logger.Error(err, "error Updating ServiceAccount", "namespace", instance.Name, "name",
+	// 		"defaultEditor")
+	// 	IncRequestErrorCounter("error updating ServiceAccount", SEVERITY_MAJOR)
+	// 	return reconcile.Result{}, err
+	// }
+	// // Create service account "default-viewer" in target namespace.
+	// // "default-viewer" would have k8s default "view" permission: view all resources in target namespace.
+	// if err = r.updateServiceAccount(instance, DEFAULT_VIEWER, kubeflowView); err != nil {
+	// 	logger.Error(err, "error Updating ServiceAccount", "namespace", instance.Name, "name",
+	// 		"defaultViewer")
+	// 	IncRequestErrorCounter("error updating ServiceAccount", SEVERITY_MAJOR)
+	// 	return reconcile.Result{}, err
+	// }
 
 	// TODO: add role for impersonate permission
 
@@ -354,14 +399,17 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	// Create the KFP configmap in the user namespace
-	kfpConfigmap := r.generateKFPConfigmap(instance)
-	if err := ctrl.SetControllerReference(instance, kfpConfigmap, r.Scheme); err != nil {
-		logger.Error(err, "Error setting ControllerReference for KFP configmap")
-		return ctrl.Result{}, err
-	}
-	if err := reconcilehelper.ConfigMap(ctx, r.Client, kfpConfigmap, logger); err != nil {
-		logger.Error(err, "Error reconciling KFP Configmap", "namespace", kfpConfigmap.Name)
-		return ctrl.Result{}, err
+	kfpConfigmaps := r.generateKFPConfigmap(instance, awsRegion)
+	for _, kfpConfigmap := range kfpConfigmaps.Items {
+		configmap := &kfpConfigmap
+		if err := ctrl.SetControllerReference(instance, configmap, r.Scheme); err != nil {
+			logger.Error(err, "Error setting ControllerReference for KFP configmap")
+			return ctrl.Result{}, err
+		}
+		if err := reconcilehelper.ConfigMap(ctx, r.Client, configmap, logger); err != nil {
+			logger.Error(err, "Error reconciling KFP Configmap", "namespace", kfpConfigmap.Namespace)
+			return ctrl.Result{}, err
+		}
 	}
 
 	// Create the KFP configmap in the user namespace
@@ -373,7 +421,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			return ctrl.Result{}, err
 		}
 		if err := reconcilehelper.Deployment(ctx, r.Client, deployment, logger); err != nil {
-			logger.Error(err, "Error reconciling KFP Deployment", "namespace", deployment.Name)
+			logger.Error(err, "Error reconciling KFP Deployment", "namespace", kfpDeployment.Namespace)
 			return ctrl.Result{}, err
 		}
 	}
@@ -387,7 +435,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			return ctrl.Result{}, err
 		}
 		if err := reconcilehelper.DestinationRule(ctx, r.Client, rule, logger); err != nil {
-			logger.Error(err, "Error reconciling KFP destination rule", "namespace", kfpConfigmap.Name)
+			logger.Error(err, "Error reconciling KFP destination rule", "namespace", rule.Namespace)
 			return ctrl.Result{}, err
 		}
 	}
@@ -401,7 +449,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			return ctrl.Result{}, err
 		}
 		if err := reconcilehelper.AuthorizationPolicy(ctx, r.Client, authPolicy, logger); err != nil {
-			logger.Error(err, "Error reconciling KFP AuthorizationPolicy", "namespace", kfpConfigmap.Name)
+			logger.Error(err, "Error reconciling KFP AuthorizationPolicy", "namespace", authorizationPolicy.Namespace)
 			return ctrl.Result{}, err
 		}
 	}
@@ -415,54 +463,76 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			return ctrl.Result{}, err
 		}
 		if err := reconcilehelper.Service(ctx, r.Client, service, logger); err != nil {
-			logger.Error(err, "Error reconciling KFP Service", "namespace", kfpConfigmap.Name)
+			logger.Error(err, "Error reconciling KFP Service", "namespace", kfpService.Namespace)
 			return ctrl.Result{}, err
 		}
 	}
 
 	// Create the KFP IAM Policy for the user namespace
-	kfpIAMPolicy := r.generateKFPIAMPolicy(instance)
+	kfpIAMPolicy := r.generateKFPIAMPolicy(instance, awsAccountID, clusterName)
 	if err := ctrl.SetControllerReference(instance, kfpIAMPolicy, r.Scheme); err != nil {
 		logger.Error(err, "Error setting ControllerReference for KFP IAM Policy")
 		return ctrl.Result{}, err
 	}
 	if err := reconcilehelper.XPlaneIAMPolicy(ctx, r.Client, kfpIAMPolicy, logger); err != nil {
-		logger.Error(err, "Error reconciling KFP IAM Policy", "namespace", kfpConfigmap.Name)
+		logger.Error(err, "Error reconciling KFP IAM Policy", "namespace", kfpIAMPolicy.Namespace)
+		return ctrl.Result{}, err
+	}
+
+	// Create the KFP IAM Role for the user namespace service account
+	kfpIAMRole := r.generateKFPIAMRole(instance, awsAccountID, oidcIssuer)
+	if err := ctrl.SetControllerReference(instance, kfpIAMRole, r.Scheme); err != nil {
+		logger.Error(err, "Error setting ControllerReference for KFP IAM Role")
+		return ctrl.Result{}, err
+	}
+	if err := reconcilehelper.XPlaneIAMRole(ctx, r.Client, kfpIAMRole, logger); err != nil {
+		logger.Error(err, "Error reconciling KFP IAM Role", "namespace", kfpIAMRole.Namespace)
+		return ctrl.Result{}, err
+	}
+
+	// Create the KFP IAM Role Policy Attachement for the user namespace
+	kfpIAMRolePolicyAttachement := r.generateKFPIAMRolePolicyAttachement(instance)
+	if err := ctrl.SetControllerReference(instance, kfpIAMRolePolicyAttachement, r.Scheme); err != nil {
+		logger.Error(err, "Error setting ControllerReference for KFP IAM Role Policy Attachement")
+		return ctrl.Result{}, err
+	}
+	if err := reconcilehelper.XPlaneIAMRolePolicyAttachement(ctx, r.Client, kfpIAMRolePolicyAttachement, logger); err != nil {
+		logger.Error(err, "Error reconciling KFP IAM Role Policy Attachement", "namespace", kfpIAMRolePolicyAttachement.Namespace)
 		return ctrl.Result{}, err
 	}
 
 	// Create the KFP IAM User for the user namespace
-	kfpIAMUser := r.generateKFPIAMUser(instance)
-	if err := ctrl.SetControllerReference(instance, kfpIAMUser, r.Scheme); err != nil {
-		logger.Error(err, "Error setting ControllerReference for KFP IAM User")
-		return ctrl.Result{}, err
-	}
-	if err := reconcilehelper.XPlaneIAMUser(ctx, r.Client, kfpIAMUser, logger); err != nil {
-		logger.Error(err, "Error reconciling KFP IAM User", "namespace", kfpConfigmap.Name)
-		return ctrl.Result{}, err
-	}
+	// kfpIAMUser := r.generateKFPIAMUser(instance)
+	// if err := ctrl.SetControllerReference(instance, kfpIAMUser, r.Scheme); err != nil {
+	// 	logger.Error(err, "Error setting ControllerReference for KFP IAM User")
+	// 	return ctrl.Result{}, err
+	// }
+	// if err := reconcilehelper.XPlaneIAMUser(ctx, r.Client, kfpIAMUser, logger); err != nil {
+	// 	logger.Error(err, "Error reconciling KFP IAM User", "namespace", kfpIAMUser.Namespace)
+	// 	return ctrl.Result{}, err
+	// }
 
-	// Create the KFP IAM Policy Attachement for the user namespace
-	kfpIAMPolicyAttachement := r.generateKFPIAMPolicyAttachement(instance)
-	if err := ctrl.SetControllerReference(instance, kfpIAMPolicyAttachement, r.Scheme); err != nil {
-		logger.Error(err, "Error setting ControllerReference for KFP IAM Policy Attachement")
-		return ctrl.Result{}, err
-	}
-	if err := reconcilehelper.XPlaneIAMPolicyAttachement(ctx, r.Client, kfpIAMPolicyAttachement, logger); err != nil {
-		logger.Error(err, "Error reconciling KFP IAM Policy Attachement", "namespace", kfpConfigmap.Name)
-		return ctrl.Result{}, err
-	}
+	// Create the KFP IAM User Policy Attachement for the user namespace
+	// kfpIAMUserPolicyAttachement := r.generateKFPIAMUserPolicyAttachement(instance)
+	// if err := ctrl.SetControllerReference(instance, kfpIAMUserPolicyAttachement, r.Scheme); err != nil {
+	// 	logger.Error(err, "Error setting ControllerReference for KFP IAM User Policy Attachement")
+	// 	return ctrl.Result{}, err
+	// }
+	// if err := reconcilehelper.XPlaneIAMUserPolicyAttachement(ctx, r.Client, kfpIAMUserPolicyAttachement, logger); err != nil {
+	// 	logger.Error(err, "Error reconciling KFP IAM User Policy Attachement", "namespace", kfpIAMUserPolicyAttachement.Namespace)
+	// 	return ctrl.Result{}, err
+	// }
 
 	// Create the KFP IAM Access Key for the user namespace
-	kfpIAMAccessKey := r.generateKFPIAMAccessKey(instance)
-	if err := ctrl.SetControllerReference(instance, kfpIAMAccessKey, r.Scheme); err != nil {
-		logger.Error(err, "Error setting ControllerReference for KFP IAM Access Key")
-		return ctrl.Result{}, err
-	}
-	if err := reconcilehelper.XPlaneIAMAccessKey(ctx, r.Client, kfpIAMAccessKey, logger); err != nil {
-		logger.Error(err, "Error reconciling KFP IAM Access Key", "namespace", kfpConfigmap.Name)
-		return ctrl.Result{}, err
-	}
+	// kfpIAMAccessKey := r.generateKFPIAMAccessKey(instance)
+	// if err := ctrl.SetControllerReference(instance, kfpIAMAccessKey, r.Scheme); err != nil {
+	// 	logger.Error(err, "Error setting ControllerReference for KFP IAM Access Key")
+	// 	return ctrl.Result{}, err
+	// }
+	// if err := reconcilehelper.XPlaneIAMAccessKey(ctx, r.Client, kfpIAMAccessKey, logger); err != nil {
+	// 	logger.Error(err, "Error reconciling KFP IAM Access Key", "namespace", kfpIAMAccessKey.Namespace)
+	// 	return ctrl.Result{}, err
+	// }
 
 	IncRequestCounter("reconcile")
 	return ctrl.Result{}, nil
@@ -580,10 +650,10 @@ func (r *ProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// Owns(&appsv1.Deployment{}).
 		Owns(&istioNetworkingClient.DestinationRule{}).
 		Owns(&corev1.Service{}).
-		// Owns(&crossplaneAWSIdentity.IAMPolicy{}).
-		// Owns(&crossplaneAWSIdentity.IAMUser{}).
-		// Owns(&crossplaneAWSIdentity.IAMUserPolicyAttachment{}).
-		// Owns(&crossplaneAWSIdentity.IAMAccessKey{}).
+		// Owns(&crossplaneAWSIdentityv1alpha1.IAMPolicy{}).
+		// Owns(&crossplaneAWSIdentityv1alpha1.IAMUser{}).
+		// Owns(&crossplaneAWSIdentityv1alpha1.IAMUserPolicyAttachment{}).
+		// Owns(&crossplaneAWSIdentityv1alpha1.IAMAccessKey{}).
 		Watches(
 			&source.Channel{Source: events},
 			profileMapperFn,
@@ -813,14 +883,37 @@ func (r *ProfileReconciler) updateResourceQuota(ctx context.Context, profileIns 
 	return nil
 }
 
+func (r *ProfileReconciler) generateServiceAccounts(profileIns *profilev2alpha1.Profile) *corev1.ServiceAccountList {
+
+	serviceAccounts := &corev1.ServiceAccountList{
+		Items: []corev1.ServiceAccount{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        DEFAULT_EDITOR,
+					Namespace:   profileIns.Name,
+					Annotations: profileIns.Spec.ServiceAccountAnnotations,
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      DEFAULT_VIEWER,
+					Namespace: profileIns.Name,
+				},
+			},
+		},
+	}
+	return serviceAccounts
+}
+
 // updateServiceAccount create or update service account "saName" with role "ClusterRoleName" in target namespace owned by "profileIns"
 func (r *ProfileReconciler) updateServiceAccount(profileIns *profilev2alpha1.Profile, saName string,
 	ClusterRoleName string) error {
 	logger := r.Log.WithValues("profile", profileIns.Name)
 	serviceAccount := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      saName,
-			Namespace: profileIns.Name,
+			Name:        saName,
+			Namespace:   profileIns.Name,
+			Annotations: profileIns.Spec.ServiceAccountAnnotations,
 		},
 	}
 	if err := controllerutil.SetControllerReference(profileIns, serviceAccount, r.Scheme); err != nil {
@@ -1014,23 +1107,57 @@ func (r *ProfileReconciler) readDefaultLabelsFromFile(path string) map[string]st
 	return labels
 }
 
-func (r *ProfileReconciler) generateKFPConfigmap(profileIns *profilev2alpha1.Profile) *corev1.ConfigMap {
+func (r *ProfileReconciler) generateKFPConfigmap(profileIns *profilev2alpha1.Profile, awsRegion string) *corev1.ConfigMapList {
 
-	configmap := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "metadata-grpc-configmap",
-			Namespace: profileIns.Name,
-		},
-		Data: map[string]string{
-			"METADATA_GRPC_SERVICE_HOST": "metadata-grpc-service.kubeflow",
-			"METADATA_GRPC_SERVICE_PORT": "8080",
+	argoArtifactRepoString := `archiveLogs: true
+s3:
+  bucket: %s
+  keyPrefix: pipelines
+  endpoint: s3.amazonaws.com
+  region: %s
+  insecure: false
+  keyFormat: "pipelines/{{workflow.namespace}}/pipelines/{{workflow.name}}/{{pod.name}}"`
+
+	argoArtifactRepo := fmt.Sprintf(argoArtifactRepoString, r.PipelineBucket, awsRegion)
+
+	configmaps := &corev1.ConfigMapList{
+		Items: []corev1.ConfigMap{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "metadata-grpc-configmap",
+					Namespace: profileIns.Name,
+				},
+				Data: map[string]string{
+					"METADATA_GRPC_SERVICE_HOST": "metadata-grpc-service.kubeflow",
+					"METADATA_GRPC_SERVICE_PORT": "8080",
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "kfp-launcher",
+					Namespace: profileIns.Name,
+				},
+				Data: map[string]string{
+					"defaultPipelineRoot": fmt.Sprintf("s3://%s/pipelines", r.PipelineBucket),
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "artifact-repositories",
+					Namespace:   profileIns.Name,
+					Annotations: map[string]string{"workflows.argoproj.io/default-artifact-repository": "default-v1"},
+				},
+				Data: map[string]string{
+					"default-v1": argoArtifactRepo,
+				},
+			},
 		},
 	}
-	return configmap
+	return configmaps
 }
 
 func (r *ProfileReconciler) generateKFPDeployments(profileIns *profilev2alpha1.Profile) *appsv1.DeploymentList {
-
+	replicas := int32(1)
 	deployments := &appsv1.DeploymentList{
 		Items: []appsv1.Deployment{
 			{
@@ -1040,6 +1167,7 @@ func (r *ProfileReconciler) generateKFPDeployments(profileIns *profilev2alpha1.P
 					Labels:    map[string]string{"app": "ml-pipeline-visualizationserver"},
 				},
 				Spec: appsv1.DeploymentSpec{
+					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "ml-pipeline-visualizationserver"},
 					},
@@ -1049,15 +1177,17 @@ func (r *ProfileReconciler) generateKFPDeployments(profileIns *profilev2alpha1.P
 						},
 						Spec: corev1.PodSpec{
 							ServiceAccountName: DEFAULT_EDITOR,
+							SecurityContext:    &corev1.PodSecurityContext{},
 							Containers: []corev1.Container{
 								{
 									Name:            "ml-pipeline-visualizationserver",
-									Image:           "gcr.io/ml-pipeline/visualization-server:1.6.0",
+									Image:           "gcr.io/ml-pipeline/visualization-server:1.7.1",
 									ImagePullPolicy: corev1.PullIfNotPresent,
 									Ports: []corev1.ContainerPort{
 										{
 											Name:          "vis-server",
 											ContainerPort: 8888,
+											Protocol:      corev1.ProtocolTCP,
 										},
 									},
 									Resources: corev1.ResourceRequirements{
@@ -1083,6 +1213,7 @@ func (r *ProfileReconciler) generateKFPDeployments(profileIns *profilev2alpha1.P
 					Labels:    map[string]string{"app": "ml-pipeline-ui-artifact"},
 				},
 				Spec: appsv1.DeploymentSpec{
+					Replicas: &replicas,
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "ml-pipeline-ui-artifact"},
 					},
@@ -1092,15 +1223,17 @@ func (r *ProfileReconciler) generateKFPDeployments(profileIns *profilev2alpha1.P
 						},
 						Spec: corev1.PodSpec{
 							ServiceAccountName: DEFAULT_EDITOR,
+							SecurityContext:    &corev1.PodSecurityContext{},
 							Containers: []corev1.Container{
 								{
 									Name:            "ml-pipeline-ui-artifact",
-									Image:           "gcr.io/ml-pipeline/frontend:1.6.0",
+									Image:           "gcr.io/ml-pipeline/frontend:1.7.1",
 									ImagePullPolicy: corev1.PullIfNotPresent,
 									Ports: []corev1.ContainerPort{
 										{
 											Name:          "artifact-ui",
 											ContainerPort: 3000,
+											Protocol:      corev1.ProtocolTCP,
 										},
 									},
 									Resources: corev1.ResourceRequirements{
@@ -1237,7 +1370,7 @@ func (r *ProfileReconciler) generateKFPServices(profileIns *profilev2alpha1.Prof
 	return services
 }
 
-func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentity.IAMPolicy {
+func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Profile, awsAccountID string, clusterName string) *crossplaneAWSIdentityv1alpha1.IAMPolicy {
 
 	documentString := `{
 	"Version": "2012-10-17",
@@ -1277,20 +1410,23 @@ func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Pro
 
 	description := "policy for namespace S3 access"
 
-	iamPolicy := &crossplaneAWSIdentity.IAMPolicy{
+	iamPolicy := &crossplaneAWSIdentityv1alpha1.IAMPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("s3-iam-policy-ns-%s", profileIns.Name),
+			Name:      fmt.Sprintf("kubeflow-s3-iam-policy-ns-%s", profileIns.Name),
 			Namespace: profileIns.Name,
+			Annotations: map[string]string{
+				"crossplane.io/external-name": fmt.Sprintf("arn:aws:iam::%s:policy/%s-kubeflow-s3-iam-policy-ns-%s", awsAccountID, clusterName, profileIns.Name),
+			},
 		},
-		Spec: crossplaneAWSIdentity.IAMPolicySpec{
+		Spec: crossplaneAWSIdentityv1alpha1.IAMPolicySpec{
 			xpv1.ResourceSpec{
 				DeletionPolicy: xpv1.DeletionDelete,
 				ProviderConfigReference: &xpv1.Reference{
 					Name: "aws-provider",
 				},
 			},
-			crossplaneAWSIdentity.IAMPolicyParameters{
-				Name:        fmt.Sprintf("kubeflow-s3-policy-ns-%s", profileIns.Name),
+			crossplaneAWSIdentityv1alpha1.IAMPolicyParameters{
+				Name:        fmt.Sprintf("%s-kubeflow-s3-iam-policy-ns-%s", clusterName, profileIns.Name),
 				Description: &description,
 				Document:    document,
 			},
@@ -1298,44 +1434,136 @@ func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Pro
 	}
 	return iamPolicy
 }
+func (r *ProfileReconciler) generateKFPIAMRole(profileIns *profilev2alpha1.Profile, awsAccountID string, oidcIssuer string) *crossplaneAWSIdentityv1beta1.IAMRole {
 
-func (r *ProfileReconciler) generateKFPIAMUser(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentity.IAMUser {
+	assumeRolePolicyDocumentString := `{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "",
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::%s:oidc-provider/%s"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringLike": {
+          "%s:sub": [
+            "system:serviceaccount:%s:default-editor"
+          ]
+        }
+      }
+    }
+  ]
+}`
 
-	iamUser := &crossplaneAWSIdentity.IAMUser{
+	assumeRolePolicyDocument := fmt.Sprintf(assumeRolePolicyDocumentString, awsAccountID, oidcIssuer, oidcIssuer, profileIns.Name)
+
+	var sessionDuration int32
+	sessionDuration = int32(3600)
+
+	var path string
+	path = "/"
+
+	iamRole := &crossplaneAWSIdentityv1beta1.IAMRole{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
-			Namespace: profileIns.Name,
+			Name:      fmt.Sprintf("kubeflow-assumable-role-ns-%s", profileIns.Name),
+			Namespace: profileIns.Namespace,
+			Annotations: map[string]string{
+				"crossplane.io/external-name": fmt.Sprintf("kubeflow-assumable-role-ns-%s", profileIns.Name),
+			},
 		},
-		Spec: crossplaneAWSIdentity.IAMUserSpec{
+		Spec: crossplaneAWSIdentityv1beta1.IAMRoleSpec{
 			xpv1.ResourceSpec{
 				DeletionPolicy: xpv1.DeletionDelete,
 				ProviderConfigReference: &xpv1.Reference{
 					Name: "aws-provider",
 				},
 			},
-			crossplaneAWSIdentity.IAMUserParameters{},
+			crossplaneAWSIdentityv1beta1.IAMRoleParameters{
+				AssumeRolePolicyDocument: assumeRolePolicyDocument,
+				MaxSessionDuration:       &sessionDuration,
+				Path:                     &path,
+			},
+		},
+	}
+
+	return iamRole
+}
+
+func (r *ProfileReconciler) generateKFPIAMRolePolicyAttachement(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1beta1.IAMRolePolicyAttachment {
+
+	iamRolePolicyAttachement := &crossplaneAWSIdentityv1beta1.IAMRolePolicyAttachment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("role-policy-attachement-ns-%s", profileIns.Name),
+			Namespace: profileIns.Name,
+			Annotations: map[string]string{
+				"crossplane.io/external-name": fmt.Sprintf("role-policy-attachement-ns-%s", profileIns.Name),
+			},
+		},
+		Spec: crossplaneAWSIdentityv1beta1.IAMRolePolicyAttachmentSpec{
+			xpv1.ResourceSpec{
+				DeletionPolicy: xpv1.DeletionDelete,
+				ProviderConfigReference: &xpv1.Reference{
+					Name: "aws-provider",
+				},
+			},
+			crossplaneAWSIdentityv1beta1.IAMRolePolicyAttachmentParameters{
+				PolicyARNRef: &xpv1.Reference{
+					Name: fmt.Sprintf("kubeflow-s3-iam-policy-ns-%s", profileIns.Name),
+				},
+				RoleNameRef: &xpv1.Reference{
+					Name: fmt.Sprintf("kubeflow-assumable-role-ns-%s", profileIns.Name),
+				},
+			},
+		},
+	}
+	return iamRolePolicyAttachement
+}
+
+func (r *ProfileReconciler) generateKFPIAMUser(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1alpha1.IAMUser {
+
+	iamUser := &crossplaneAWSIdentityv1alpha1.IAMUser{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
+			Namespace: profileIns.Name,
+			Annotations: map[string]string{
+				"crossplane.io/external-name": fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
+			},
+		},
+		Spec: crossplaneAWSIdentityv1alpha1.IAMUserSpec{
+			xpv1.ResourceSpec{
+				DeletionPolicy: xpv1.DeletionDelete,
+				ProviderConfigReference: &xpv1.Reference{
+					Name: "aws-provider",
+				},
+			},
+			crossplaneAWSIdentityv1alpha1.IAMUserParameters{},
 		},
 	}
 	return iamUser
 }
 
-func (r *ProfileReconciler) generateKFPIAMPolicyAttachement(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentity.IAMUserPolicyAttachment {
+func (r *ProfileReconciler) generateKFPIAMUserPolicyAttachement(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1alpha1.IAMUserPolicyAttachment {
 
-	iamPolicyAttachement := &crossplaneAWSIdentity.IAMUserPolicyAttachment{
+	iamUserPolicyAttachement := &crossplaneAWSIdentityv1alpha1.IAMUserPolicyAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("policy-attachement-ns-%s", profileIns.Name),
 			Namespace: profileIns.Name,
+			Annotations: map[string]string{
+				"crossplane.io/external-name": fmt.Sprintf("policy-attachement-ns-%s", profileIns.Name),
+			},
 		},
-		Spec: crossplaneAWSIdentity.IAMUserPolicyAttachmentSpec{
+		Spec: crossplaneAWSIdentityv1alpha1.IAMUserPolicyAttachmentSpec{
 			xpv1.ResourceSpec{
 				DeletionPolicy: xpv1.DeletionDelete,
 				ProviderConfigReference: &xpv1.Reference{
 					Name: "aws-provider",
 				},
 			},
-			crossplaneAWSIdentity.IAMUserPolicyAttachmentParameters{
+			crossplaneAWSIdentityv1alpha1.IAMUserPolicyAttachmentParameters{
 				PolicyARNRef: &xpv1.Reference{
-					Name: fmt.Sprintf("s3-iam-policy-ns-%s", profileIns.Name),
+					Name: fmt.Sprintf("kubeflow-s3-iam-policy-ns-%s", profileIns.Name),
 				},
 				UserNameRef: &xpv1.Reference{
 					Name: fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
@@ -1343,34 +1571,34 @@ func (r *ProfileReconciler) generateKFPIAMPolicyAttachement(profileIns *profilev
 			},
 		},
 	}
-	return iamPolicyAttachement
+	return iamUserPolicyAttachement
 }
 
-func (r *ProfileReconciler) generateKFPIAMAccessKey(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentity.IAMAccessKey {
+// func (r *ProfileReconciler) generateKFPIAMAccessKey(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1alpha1.IAMAccessKey {
 
-	iamAccessKey := &crossplaneAWSIdentity.IAMAccessKey{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("access-key-ns-%s", profileIns.Name),
-			Namespace: profileIns.Name,
-		},
-		Spec: crossplaneAWSIdentity.IAMAccessKeySpec{
-			xpv1.ResourceSpec{
-				DeletionPolicy: xpv1.DeletionDelete,
-				ProviderConfigReference: &xpv1.Reference{
-					Name: "aws-provider",
-				},
-				WriteConnectionSecretToReference: &xpv1.SecretReference{
-					Name:      "pipelines-s3-secret",
-					Namespace: profileIns.Name,
-				},
-			},
-			crossplaneAWSIdentity.IAMAccessKeyParameters{
-				IAMUsernameRef: &xpv1.Reference{
-					Name: fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
-				},
-			},
-		},
-	}
+// 	iamAccessKey := &crossplaneAWSIdentityv1alpha1.IAMAccessKey{
+// 		ObjectMeta: metav1.ObjectMeta{
+// 			Name:      fmt.Sprintf("access-key-ns-%s", profileIns.Name),
+// 			Namespace: profileIns.Name,
+// 		},
+// 		Spec: crossplaneAWSIdentityv1alpha1.IAMAccessKeySpec{
+// 			xpv1.ResourceSpec{
+// 				DeletionPolicy: xpv1.DeletionDelete,
+// 				ProviderConfigReference: &xpv1.Reference{
+// 					Name: "aws-provider",
+// 				},
+// 				WriteConnectionSecretToReference: &xpv1.SecretReference{
+// 					Name:      "pipelines-s3-secret",
+// 					Namespace: profileIns.Name,
+// 				},
+// 			},
+// 			crossplaneAWSIdentityv1alpha1.IAMAccessKeyParameters{
+// 				IAMUsernameRef: &xpv1.Reference{
+// 					Name: fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
+// 				},
+// 			},
+// 		},
+// 	}
 
-	return iamAccessKey
-}
+// 	return iamAccessKey
+// }

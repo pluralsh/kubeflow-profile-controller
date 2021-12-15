@@ -54,6 +54,9 @@ type ProfileSpec struct {
 
 	ClusterRole    string          `json:"clusterRole,omitempty"`
 	ExtraResources []ExtraResource `json:"extraResources,omitempty"`
+
+	//+kubebuilder:validation:Optional
+	ServiceAccountAnnotations map[string]string `json:"serviceAccountAnnotations,omitempty"`
 }
 
 const (

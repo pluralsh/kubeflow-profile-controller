@@ -91,9 +91,7 @@ func main() {
 	flag.StringVar(&jwksUri, JWKSURI, "", "The jwksUri for the OIDC issuer used for Kubeflow")
 	flag.StringVar(&pipelineBucket, PIPELINEBUCKET, "pipelines-bucket", "The bucket name used for Kubeflow Pipelines")
 
-	opts := zap.Options{
-		Development: true,
-	}
+	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
