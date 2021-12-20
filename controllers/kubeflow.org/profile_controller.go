@@ -231,16 +231,6 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	clusterName := xplaneCluster.ObjectMeta.Annotations["crossplane.io/external-name"]
 	oidcIssuer := strings.Replace(xplaneCluster.Status.AtProvider.Identity.OIDC.Issuer, "https://", "", -1)
 
-	instanceCopy := &profilev2alpha1.Profile{}
-	instanceCopy = instance
-
-	instance.Spec.ServiceAccountAnnotations = map[string]string{"eks.amazonaws.com/role-arn": fmt.Sprintf("arn:aws:iam::%s:role/kubeflow-assumable-role-ns-%s", awsAccountID, instance.Name)}
-
-	if err := r.Update(ctx, instance); err != nil {
-		logger.Error(err, "Error adding annotation to service account", "namespace", instanceCopy.Namespace)
-		return ctrl.Result{}, err
-	}
-
 	// Update Istio RequestAuthentication
 	// Create Istio RequestAuthentication in target namespace, which configures Istio with the OIDC provider.
 	if err = r.updateIstioRequestAuthentication(instance); err != nil {
@@ -260,7 +250,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	// Update service accounts
 	// Create service account "default-editor" in target namespace.
 	// "default-editor" would have kubeflowEdit permission: edit all resources in target namespace except rbac.
-	serviceAccounts := r.generateServiceAccounts(instance)
+	serviceAccounts := r.generateServiceAccounts(instance, awsAccountID)
 	for _, serviceAccount := range serviceAccounts.Items {
 		sa := &serviceAccount
 		if err := ctrl.SetControllerReference(instance, sa, r.Scheme); err != nil {
@@ -883,15 +873,17 @@ func (r *ProfileReconciler) updateResourceQuota(ctx context.Context, profileIns 
 	return nil
 }
 
-func (r *ProfileReconciler) generateServiceAccounts(profileIns *profilev2alpha1.Profile) *corev1.ServiceAccountList {
+func (r *ProfileReconciler) generateServiceAccounts(profileIns *profilev2alpha1.Profile, awsAccountID string) *corev1.ServiceAccountList {
 
 	serviceAccounts := &corev1.ServiceAccountList{
 		Items: []corev1.ServiceAccount{
 			{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:        DEFAULT_EDITOR,
-					Namespace:   profileIns.Name,
-					Annotations: profileIns.Spec.ServiceAccountAnnotations,
+					Name:      DEFAULT_EDITOR,
+					Namespace: profileIns.Name,
+					Annotations: map[string]string{
+						"eks.amazonaws.com/role-arn": fmt.Sprintf("arn:aws:iam::%s:role/kubeflow-assumable-role-ns-%s", awsAccountID, profileIns.Name),
+					},
 				},
 			},
 			{
@@ -907,13 +899,15 @@ func (r *ProfileReconciler) generateServiceAccounts(profileIns *profilev2alpha1.
 
 // updateServiceAccount create or update service account "saName" with role "ClusterRoleName" in target namespace owned by "profileIns"
 func (r *ProfileReconciler) updateServiceAccount(profileIns *profilev2alpha1.Profile, saName string,
-	ClusterRoleName string) error {
+	ClusterRoleName string, awsAccountID string) error {
 	logger := r.Log.WithValues("profile", profileIns.Name)
 	serviceAccount := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        saName,
-			Namespace:   profileIns.Name,
-			Annotations: profileIns.Spec.ServiceAccountAnnotations,
+			Name:      saName,
+			Namespace: profileIns.Name,
+			Annotations: map[string]string{
+				"eks.amazonaws.com/role-arn": fmt.Sprintf("arn:aws:iam::%s:role/kubeflow-assumable-role-ns-%s", awsAccountID, profileIns.Name),
+			},
 		},
 	}
 	if err := controllerutil.SetControllerReference(profileIns, serviceAccount, r.Scheme); err != nil {

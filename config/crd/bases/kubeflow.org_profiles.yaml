@@ -457,10 +457,6 @@ spec:
                       type: string
                     type: array
                 type: object
-              serviceAccountAnnotations:
-                additionalProperties:
-                  type: string
-                type: object
             type: object
           status:
             description: ProfileStatus defines the observed state of Profile
