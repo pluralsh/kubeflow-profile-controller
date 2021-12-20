@@ -324,7 +324,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 					{
 						Kind:      rbacv1.ServiceAccountKind,
 						Name:      DEFAULT_EDITOR,
-						Namespace: kubeflowEdit,
+						Namespace: instance.Name,
 					},
 				},
 			},
@@ -343,7 +343,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 					{
 						Kind:      rbacv1.ServiceAccountKind,
 						Name:      DEFAULT_VIEWER,
-						Namespace: kubeflowView,
+						Namespace: instance.Name,
 					},
 				},
 			},
