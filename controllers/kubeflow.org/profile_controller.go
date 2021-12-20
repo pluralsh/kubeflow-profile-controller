@@ -291,27 +291,72 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	// Update owner rbac permission
 	// When ClusterRole was referred by namespaced roleBinding, the result permission will be namespaced as well.
-	roleBinding := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Annotations: map[string]string{USER: instance.Spec.Owner.Name, ROLE: ADMIN},
-			Name:        "namespaceAdmin",
-			Namespace:   instance.Name,
-		},
-		// Use default ClusterRole 'admin' for profile/namespace owner
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
-			Kind:     "ClusterRole",
-			Name:     clusterRole,
-		},
-		Subjects: []rbacv1.Subject{
-			instance.Spec.Owner,
+	roleBindings := &rbacv1.RoleBindingList{
+		Items: []rbacv1.RoleBinding{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{USER: instance.Spec.Owner.Name, ROLE: ADMIN},
+					Name:        "namespaceAdmin",
+					Namespace:   instance.Name,
+				},
+				// Use default ClusterRole 'admin' for profile/namespace owner
+				RoleRef: rbacv1.RoleRef{
+					APIGroup: "rbac.authorization.k8s.io",
+					Kind:     "ClusterRole",
+					Name:     clusterRole,
+				},
+				Subjects: []rbacv1.Subject{
+					instance.Spec.Owner,
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      DEFAULT_EDITOR,
+					Namespace: instance.Name,
+				},
+				// Use default ClusterRole 'admin' for profile/namespace owner
+				RoleRef: rbacv1.RoleRef{
+					APIGroup: "rbac.authorization.k8s.io",
+					Kind:     "ClusterRole",
+					Name:     kubeflowEdit,
+				},
+				Subjects: []rbacv1.Subject{
+					{
+						Kind:      rbacv1.ServiceAccountKind,
+						Name:      DEFAULT_EDITOR,
+						Namespace: kubeflowEdit,
+					},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      DEFAULT_VIEWER,
+					Namespace: instance.Name,
+				},
+				// Use default ClusterRole 'admin' for profile/namespace owner
+				RoleRef: rbacv1.RoleRef{
+					APIGroup: "rbac.authorization.k8s.io",
+					Kind:     "ClusterRole",
+					Name:     kubeflowView,
+				},
+				Subjects: []rbacv1.Subject{
+					{
+						Kind:      rbacv1.ServiceAccountKind,
+						Name:      DEFAULT_VIEWER,
+						Namespace: kubeflowView,
+					},
+				},
+			},
 		},
 	}
-	if err = r.updateRoleBinding(instance, roleBinding); err != nil {
-		logger.Error(err, "error Updating Owner Rolebinding", "namespace", instance.Name, "name",
-			instance.Spec.Owner.Name, "role", roleBinding.RoleRef.Name)
-		IncRequestErrorCounter("error updating Owner Rolebinding", SEVERITY_MAJOR)
-		return reconcile.Result{}, err
+
+	for _, roleBinding := range roleBindings.Items {
+		if err = r.updateRoleBinding(instance, &roleBinding); err != nil {
+			logger.Error(err, "error Updating Owner Rolebinding", "namespace", instance.Name, "name",
+				instance.Spec.Owner.Name, "role", roleBinding.RoleRef.Name)
+			IncRequestErrorCounter("error updating Owner Rolebinding", SEVERITY_MAJOR)
+			return reconcile.Result{}, err
+		}
 	}
 	// Create resource quota for target namespace if resources are specified in profile.
 	if len(instance.Spec.ResourceQuotaSpec.Hard) > 0 {
