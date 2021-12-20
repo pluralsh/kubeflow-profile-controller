@@ -31,8 +31,8 @@ import (
 
 	// "github.com/ghodss/yaml"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-	crossplaneAWSIdentityv1alpha1 "github.com/crossplane/provider-aws/apis/identity/v1alpha1"
-	crossplaneAWSIdentityv1beta1 "github.com/crossplane/provider-aws/apis/identity/v1beta1"
+	// crossplaneAWSIdentityv1alpha1 "github.com/crossplane/provider-aws/apis/identity/v1alpha1"
+	crossplaneAWSIdentityv1beta1 "github.com/crossplane/provider-aws/apis/iam/v1beta1"
 
 	crossplaneAWSEKSv1beta1 "github.com/crossplane/provider-aws/apis/eks/v1beta1"
 
@@ -1370,7 +1370,7 @@ func (r *ProfileReconciler) generateKFPServices(profileIns *profilev2alpha1.Prof
 	return services
 }
 
-func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Profile, awsAccountID string, clusterName string) *crossplaneAWSIdentityv1alpha1.IAMPolicy {
+func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Profile, awsAccountID string, clusterName string) *crossplaneAWSIdentityv1beta1.Policy {
 
 	documentString := `{
 	"Version": "2012-10-17",
@@ -1410,7 +1410,7 @@ func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Pro
 
 	description := "policy for namespace S3 access"
 
-	iamPolicy := &crossplaneAWSIdentityv1alpha1.IAMPolicy{
+	iamPolicy := &crossplaneAWSIdentityv1beta1.Policy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("kubeflow-s3-iam-policy-ns-%s", profileIns.Name),
 			Namespace: profileIns.Name,
@@ -1418,14 +1418,14 @@ func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Pro
 				"crossplane.io/external-name": fmt.Sprintf("arn:aws:iam::%s:policy/%s-kubeflow-s3-iam-policy-ns-%s", awsAccountID, clusterName, profileIns.Name),
 			},
 		},
-		Spec: crossplaneAWSIdentityv1alpha1.IAMPolicySpec{
+		Spec: crossplaneAWSIdentityv1beta1.PolicySpec{
 			xpv1.ResourceSpec{
 				DeletionPolicy: xpv1.DeletionDelete,
 				ProviderConfigReference: &xpv1.Reference{
 					Name: "aws-provider",
 				},
 			},
-			crossplaneAWSIdentityv1alpha1.IAMPolicyParameters{
+			crossplaneAWSIdentityv1beta1.PolicyParameters{
 				Name:        fmt.Sprintf("%s-kubeflow-s3-iam-policy-ns-%s", clusterName, profileIns.Name),
 				Description: &description,
 				Document:    document,
@@ -1434,7 +1434,7 @@ func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Pro
 	}
 	return iamPolicy
 }
-func (r *ProfileReconciler) generateKFPIAMRole(profileIns *profilev2alpha1.Profile, awsAccountID string, oidcIssuer string) *crossplaneAWSIdentityv1beta1.IAMRole {
+func (r *ProfileReconciler) generateKFPIAMRole(profileIns *profilev2alpha1.Profile, awsAccountID string, oidcIssuer string) *crossplaneAWSIdentityv1beta1.Role {
 
 	assumeRolePolicyDocumentString := `{
   "Version": "2012-10-17",
@@ -1465,7 +1465,7 @@ func (r *ProfileReconciler) generateKFPIAMRole(profileIns *profilev2alpha1.Profi
 	var path string
 	path = "/"
 
-	iamRole := &crossplaneAWSIdentityv1beta1.IAMRole{
+	iamRole := &crossplaneAWSIdentityv1beta1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("kubeflow-assumable-role-ns-%s", profileIns.Name),
 			Namespace: profileIns.Namespace,
@@ -1473,14 +1473,14 @@ func (r *ProfileReconciler) generateKFPIAMRole(profileIns *profilev2alpha1.Profi
 				"crossplane.io/external-name": fmt.Sprintf("kubeflow-assumable-role-ns-%s", profileIns.Name),
 			},
 		},
-		Spec: crossplaneAWSIdentityv1beta1.IAMRoleSpec{
+		Spec: crossplaneAWSIdentityv1beta1.RoleSpec{
 			xpv1.ResourceSpec{
 				DeletionPolicy: xpv1.DeletionDelete,
 				ProviderConfigReference: &xpv1.Reference{
 					Name: "aws-provider",
 				},
 			},
-			crossplaneAWSIdentityv1beta1.IAMRoleParameters{
+			crossplaneAWSIdentityv1beta1.RoleParameters{
 				AssumeRolePolicyDocument: assumeRolePolicyDocument,
 				MaxSessionDuration:       &sessionDuration,
 				Path:                     &path,
@@ -1491,9 +1491,9 @@ func (r *ProfileReconciler) generateKFPIAMRole(profileIns *profilev2alpha1.Profi
 	return iamRole
 }
 
-func (r *ProfileReconciler) generateKFPIAMRolePolicyAttachement(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1beta1.IAMRolePolicyAttachment {
+func (r *ProfileReconciler) generateKFPIAMRolePolicyAttachement(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1beta1.RolePolicyAttachment {
 
-	iamRolePolicyAttachement := &crossplaneAWSIdentityv1beta1.IAMRolePolicyAttachment{
+	iamRolePolicyAttachement := &crossplaneAWSIdentityv1beta1.RolePolicyAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("role-policy-attachement-ns-%s", profileIns.Name),
 			Namespace: profileIns.Name,
@@ -1501,14 +1501,14 @@ func (r *ProfileReconciler) generateKFPIAMRolePolicyAttachement(profileIns *prof
 				"crossplane.io/external-name": fmt.Sprintf("role-policy-attachement-ns-%s", profileIns.Name),
 			},
 		},
-		Spec: crossplaneAWSIdentityv1beta1.IAMRolePolicyAttachmentSpec{
+		Spec: crossplaneAWSIdentityv1beta1.RolePolicyAttachmentSpec{
 			xpv1.ResourceSpec{
 				DeletionPolicy: xpv1.DeletionDelete,
 				ProviderConfigReference: &xpv1.Reference{
 					Name: "aws-provider",
 				},
 			},
-			crossplaneAWSIdentityv1beta1.IAMRolePolicyAttachmentParameters{
+			crossplaneAWSIdentityv1beta1.RolePolicyAttachmentParameters{
 				PolicyARNRef: &xpv1.Reference{
 					Name: fmt.Sprintf("kubeflow-s3-iam-policy-ns-%s", profileIns.Name),
 				},
@@ -1521,9 +1521,9 @@ func (r *ProfileReconciler) generateKFPIAMRolePolicyAttachement(profileIns *prof
 	return iamRolePolicyAttachement
 }
 
-func (r *ProfileReconciler) generateKFPIAMUser(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1alpha1.IAMUser {
+func (r *ProfileReconciler) generateKFPIAMUser(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1beta1.User {
 
-	iamUser := &crossplaneAWSIdentityv1alpha1.IAMUser{
+	iamUser := &crossplaneAWSIdentityv1beta1.User{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
 			Namespace: profileIns.Name,
@@ -1531,22 +1531,22 @@ func (r *ProfileReconciler) generateKFPIAMUser(profileIns *profilev2alpha1.Profi
 				"crossplane.io/external-name": fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
 			},
 		},
-		Spec: crossplaneAWSIdentityv1alpha1.IAMUserSpec{
+		Spec: crossplaneAWSIdentityv1beta1.UserSpec{
 			xpv1.ResourceSpec{
 				DeletionPolicy: xpv1.DeletionDelete,
 				ProviderConfigReference: &xpv1.Reference{
 					Name: "aws-provider",
 				},
 			},
-			crossplaneAWSIdentityv1alpha1.IAMUserParameters{},
+			crossplaneAWSIdentityv1beta1.UserParameters{},
 		},
 	}
 	return iamUser
 }
 
-func (r *ProfileReconciler) generateKFPIAMUserPolicyAttachement(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1alpha1.IAMUserPolicyAttachment {
+func (r *ProfileReconciler) generateKFPIAMUserPolicyAttachement(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1beta1.UserPolicyAttachment {
 
-	iamUserPolicyAttachement := &crossplaneAWSIdentityv1alpha1.IAMUserPolicyAttachment{
+	iamUserPolicyAttachement := &crossplaneAWSIdentityv1beta1.UserPolicyAttachment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("policy-attachement-ns-%s", profileIns.Name),
 			Namespace: profileIns.Name,
@@ -1554,14 +1554,14 @@ func (r *ProfileReconciler) generateKFPIAMUserPolicyAttachement(profileIns *prof
 				"crossplane.io/external-name": fmt.Sprintf("policy-attachement-ns-%s", profileIns.Name),
 			},
 		},
-		Spec: crossplaneAWSIdentityv1alpha1.IAMUserPolicyAttachmentSpec{
+		Spec: crossplaneAWSIdentityv1beta1.UserPolicyAttachmentSpec{
 			xpv1.ResourceSpec{
 				DeletionPolicy: xpv1.DeletionDelete,
 				ProviderConfigReference: &xpv1.Reference{
 					Name: "aws-provider",
 				},
 			},
-			crossplaneAWSIdentityv1alpha1.IAMUserPolicyAttachmentParameters{
+			crossplaneAWSIdentityv1beta1.UserPolicyAttachmentParameters{
 				PolicyARNRef: &xpv1.Reference{
 					Name: fmt.Sprintf("kubeflow-s3-iam-policy-ns-%s", profileIns.Name),
 				},
@@ -1574,14 +1574,14 @@ func (r *ProfileReconciler) generateKFPIAMUserPolicyAttachement(profileIns *prof
 	return iamUserPolicyAttachement
 }
 
-// func (r *ProfileReconciler) generateKFPIAMAccessKey(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1alpha1.IAMAccessKey {
+// func (r *ProfileReconciler) generateKFPIAMAccessKey(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1beta1.AccessKey {
 
-// 	iamAccessKey := &crossplaneAWSIdentityv1alpha1.IAMAccessKey{
+// 	iamAccessKey := &crossplaneAWSIdentityv1beta1.AccessKey{
 // 		ObjectMeta: metav1.ObjectMeta{
 // 			Name:      fmt.Sprintf("access-key-ns-%s", profileIns.Name),
 // 			Namespace: profileIns.Name,
 // 		},
-// 		Spec: crossplaneAWSIdentityv1alpha1.IAMAccessKeySpec{
+// 		Spec: crossplaneAWSIdentityv1beta1.AccessKeySpec{
 // 			xpv1.ResourceSpec{
 // 				DeletionPolicy: xpv1.DeletionDelete,
 // 				ProviderConfigReference: &xpv1.Reference{
@@ -1592,7 +1592,7 @@ func (r *ProfileReconciler) generateKFPIAMUserPolicyAttachement(profileIns *prof
 // 					Namespace: profileIns.Name,
 // 				},
 // 			},
-// 			crossplaneAWSIdentityv1alpha1.IAMAccessKeyParameters{
+// 			crossplaneAWSIdentityv1beta1.AccessKeyParameters{
 // 				IAMUsernameRef: &xpv1.Reference{
 // 					Name: fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
 // 				},

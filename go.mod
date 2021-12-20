@@ -6,7 +6,7 @@ require (
 	github.com/aws/aws-sdk-go v1.41.16
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/crossplane/crossplane-runtime v0.15.1-0.20210930095326-d5661210733b
-	github.com/crossplane/provider-aws v0.21.2
+	github.com/crossplane/provider-aws v0.22.0
 	github.com/fsnotify/fsnotify v1.5.1
 	// github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-logr/logr v0.4.0
@@ -14,7 +14,7 @@ require (
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.17.0
 	github.com/pkg/errors v0.9.1
-	github.com/pluralsh/controller-reconcile-helper v0.0.0-20211215161305-7df9166ba10c
+	github.com/pluralsh/controller-reconcile-helper v0.0.0-20211220162507-538e238050b0
 	github.com/prometheus/client_golang v1.11.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
@@ -27,6 +27,5 @@ require (
 	k8s.io/apimachinery v0.22.4
 	k8s.io/client-go v0.22.4
 	sigs.k8s.io/controller-runtime v0.10.3
-	sigs.k8s.io/hierarchical-namespaces v0.9.0
 	sigs.k8s.io/yaml v1.3.0
 )
