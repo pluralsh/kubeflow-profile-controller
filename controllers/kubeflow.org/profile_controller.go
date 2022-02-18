@@ -1421,12 +1421,18 @@ func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Pro
 			"Resource": ["arn:aws:s3:::*"]
 		},
 		{
+			"Sid": "AllowRootListingOfCompanyBucket",
+			"Action": ["s3:ListBucket"],
+			"Effect": "Allow",
+			"Resource": ["arn:aws:s3:::%s"],
+		},
+		{
 			"Sid": "AllowRootAndHomeListingOfCompanyBucket",
 			"Action": ["s3:ListBucket"],
 			"Effect": "Allow",
 			"Resource": ["arn:aws:s3:::%s"],
 			"Condition":{"StringEquals":{"s3:prefix":["","pipelines/", "pipelines/%s"],"s3:delimiter":["/"]}}
-			},
+		},
 		{
 			"Sid": "AllowListingOfUserFolder",
 			"Action": ["s3:ListBucket"],
@@ -1445,7 +1451,7 @@ func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Pro
 	]
 }`
 
-	document := fmt.Sprintf(documentString, r.PipelineBucket, profileIns.Name, r.PipelineBucket, profileIns.Name, strings.Replace(profileIns.Name, "-", "", -1), r.PipelineBucket, profileIns.Name)
+	document := fmt.Sprintf(documentString, r.PipelineBucket, r.PipelineBucket, profileIns.Name, r.PipelineBucket, profileIns.Name, strings.Replace(profileIns.Name, "-", "", -1), r.PipelineBucket, profileIns.Name)
 
 	description := "policy for namespace S3 access"
 
