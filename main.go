@@ -24,6 +24,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	ackIAM "github.com/aws-controllers-k8s/iam-controller/apis/v1alpha1"
 	crossplaneAWS "github.com/crossplane/provider-aws/apis"
 	istioNetworkingClient "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioSecurityClient "istio.io/client-go/pkg/apis/security/v1beta1"
@@ -63,6 +64,7 @@ func init() {
 	utilruntime.Must(istioSecurityClient.AddToScheme(scheme))
 	utilruntime.Must(istioNetworkingClient.AddToScheme(scheme))
 	utilruntime.Must(crossplaneAWS.AddToScheme(scheme))
+	utilruntime.Must(ackIAM.AddToScheme(scheme))
 	utilruntime.Must(kubefloworgv2alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }

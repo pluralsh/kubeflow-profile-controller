@@ -30,11 +30,12 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	// "github.com/ghodss/yaml"
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+
 	// crossplaneAWSIdentityv1alpha1 "github.com/crossplane/provider-aws/apis/identity/v1alpha1"
-	crossplaneAWSIdentityv1beta1 "github.com/crossplane/provider-aws/apis/iam/v1beta1"
 
 	crossplaneAWSEKSv1beta1 "github.com/crossplane/provider-aws/apis/eks/v1beta1"
+
+	ackIAM "github.com/aws-controllers-k8s/iam-controller/apis/v1alpha1"
 
 	"github.com/go-logr/logr"
 	"github.com/goccy/go-yaml"
@@ -250,7 +251,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	// Update service accounts
 	// Create service account "default-editor" in target namespace.
 	// "default-editor" would have kubeflowEdit permission: edit all resources in target namespace except rbac.
-	serviceAccounts := r.generateServiceAccounts(instance, awsAccountID)
+	serviceAccounts := r.generateServiceAccounts(instance, awsAccountID, clusterName)
 	for _, serviceAccount := range serviceAccounts.Items {
 		sa := &serviceAccount
 		if err := ctrl.SetControllerReference(instance, sa, r.Scheme); err != nil {
@@ -504,70 +505,26 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	// Create the KFP IAM Policy for the user namespace
-	kfpIAMPolicy := r.generateKFPIAMPolicy(instance, awsAccountID, clusterName)
+	kfpIAMPolicy := r.generateKFPIAMPolicyACK(instance, awsAccountID, clusterName)
 	if err := ctrl.SetControllerReference(instance, kfpIAMPolicy, r.Scheme); err != nil {
 		logger.Error(err, "Error setting ControllerReference for KFP IAM Policy")
 		return ctrl.Result{}, err
 	}
-	if err := reconcilehelper.XPlaneIAMPolicy(ctx, r.Client, kfpIAMPolicy, logger); err != nil {
+	if err := reconcilehelper.ACKIAMPolicy(ctx, r.Client, kfpIAMPolicy, logger); err != nil {
 		logger.Error(err, "Error reconciling KFP IAM Policy", "namespace", kfpIAMPolicy.Namespace)
 		return ctrl.Result{}, err
 	}
 
 	// Create the KFP IAM Role for the user namespace service account
-	kfpIAMRole := r.generateKFPIAMRole(instance, awsAccountID, oidcIssuer)
+	kfpIAMRole := r.generateKFPIAMRoleACK(instance, awsAccountID, oidcIssuer, clusterName)
 	if err := ctrl.SetControllerReference(instance, kfpIAMRole, r.Scheme); err != nil {
 		logger.Error(err, "Error setting ControllerReference for KFP IAM Role")
 		return ctrl.Result{}, err
 	}
-	if err := reconcilehelper.XPlaneIAMRole(ctx, r.Client, kfpIAMRole, logger); err != nil {
+	if err := reconcilehelper.ACKIAMRole(ctx, r.Client, kfpIAMRole, logger); err != nil {
 		logger.Error(err, "Error reconciling KFP IAM Role", "namespace", kfpIAMRole.Namespace)
 		return ctrl.Result{}, err
 	}
-
-	// Create the KFP IAM Role Policy Attachement for the user namespace
-	kfpIAMRolePolicyAttachement := r.generateKFPIAMRolePolicyAttachement(instance)
-	if err := ctrl.SetControllerReference(instance, kfpIAMRolePolicyAttachement, r.Scheme); err != nil {
-		logger.Error(err, "Error setting ControllerReference for KFP IAM Role Policy Attachement")
-		return ctrl.Result{}, err
-	}
-	if err := reconcilehelper.XPlaneIAMRolePolicyAttachement(ctx, r.Client, kfpIAMRolePolicyAttachement, logger); err != nil {
-		logger.Error(err, "Error reconciling KFP IAM Role Policy Attachement", "namespace", kfpIAMRolePolicyAttachement.Namespace)
-		return ctrl.Result{}, err
-	}
-
-	// Create the KFP IAM User for the user namespace
-	// kfpIAMUser := r.generateKFPIAMUser(instance)
-	// if err := ctrl.SetControllerReference(instance, kfpIAMUser, r.Scheme); err != nil {
-	// 	logger.Error(err, "Error setting ControllerReference for KFP IAM User")
-	// 	return ctrl.Result{}, err
-	// }
-	// if err := reconcilehelper.XPlaneIAMUser(ctx, r.Client, kfpIAMUser, logger); err != nil {
-	// 	logger.Error(err, "Error reconciling KFP IAM User", "namespace", kfpIAMUser.Namespace)
-	// 	return ctrl.Result{}, err
-	// }
-
-	// Create the KFP IAM User Policy Attachement for the user namespace
-	// kfpIAMUserPolicyAttachement := r.generateKFPIAMUserPolicyAttachement(instance)
-	// if err := ctrl.SetControllerReference(instance, kfpIAMUserPolicyAttachement, r.Scheme); err != nil {
-	// 	logger.Error(err, "Error setting ControllerReference for KFP IAM User Policy Attachement")
-	// 	return ctrl.Result{}, err
-	// }
-	// if err := reconcilehelper.XPlaneIAMUserPolicyAttachement(ctx, r.Client, kfpIAMUserPolicyAttachement, logger); err != nil {
-	// 	logger.Error(err, "Error reconciling KFP IAM User Policy Attachement", "namespace", kfpIAMUserPolicyAttachement.Namespace)
-	// 	return ctrl.Result{}, err
-	// }
-
-	// Create the KFP IAM Access Key for the user namespace
-	// kfpIAMAccessKey := r.generateKFPIAMAccessKey(instance)
-	// if err := ctrl.SetControllerReference(instance, kfpIAMAccessKey, r.Scheme); err != nil {
-	// 	logger.Error(err, "Error setting ControllerReference for KFP IAM Access Key")
-	// 	return ctrl.Result{}, err
-	// }
-	// if err := reconcilehelper.XPlaneIAMAccessKey(ctx, r.Client, kfpIAMAccessKey, logger); err != nil {
-	// 	logger.Error(err, "Error reconciling KFP IAM Access Key", "namespace", kfpIAMAccessKey.Namespace)
-	// 	return ctrl.Result{}, err
-	// }
 
 	IncRequestCounter("reconcile")
 	return ctrl.Result{}, nil
@@ -918,7 +875,7 @@ func (r *ProfileReconciler) updateResourceQuota(ctx context.Context, profileIns 
 	return nil
 }
 
-func (r *ProfileReconciler) generateServiceAccounts(profileIns *profilev2alpha1.Profile, awsAccountID string) *corev1.ServiceAccountList {
+func (r *ProfileReconciler) generateServiceAccounts(profileIns *profilev2alpha1.Profile, awsAccountID string, clusterName string) *corev1.ServiceAccountList {
 
 	serviceAccounts := &corev1.ServiceAccountList{
 		Items: []corev1.ServiceAccount{
@@ -927,7 +884,7 @@ func (r *ProfileReconciler) generateServiceAccounts(profileIns *profilev2alpha1.
 					Name:      DEFAULT_EDITOR,
 					Namespace: profileIns.Name,
 					Annotations: map[string]string{
-						"eks.amazonaws.com/role-arn": fmt.Sprintf("arn:aws:iam::%s:role/kubeflow-assumable-role-ns-%s", awsAccountID, profileIns.Name),
+						"eks.amazonaws.com/role-arn": fmt.Sprintf("arn:aws:iam::%s:role/%s-kubeflow-assumable-role-ns-%s", awsAccountID, clusterName, profileIns.Name),
 					},
 				},
 			},
@@ -1409,7 +1366,7 @@ func (r *ProfileReconciler) generateKFPServices(profileIns *profilev2alpha1.Prof
 	return services
 }
 
-func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Profile, awsAccountID string, clusterName string) *crossplaneAWSIdentityv1beta1.Policy {
+func (r *ProfileReconciler) generateKFPIAMPolicyACK(profileIns *profilev2alpha1.Profile, awsAccountID string, clusterName string) *ackIAM.Policy {
 
 	documentString := `{
 	"Version": "2012-10-17",
@@ -1424,7 +1381,7 @@ func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Pro
 			"Sid": "AllowRootListingOfCompanyBucket",
 			"Action": ["s3:ListBucket"],
 			"Effect": "Allow",
-			"Resource": ["arn:aws:s3:::%s"],
+			"Resource": ["arn:aws:s3:::%s"]
 		},
 		{
 			"Sid": "AllowRootAndHomeListingOfCompanyBucket",
@@ -1455,195 +1412,77 @@ func (r *ProfileReconciler) generateKFPIAMPolicy(profileIns *profilev2alpha1.Pro
 
 	description := "policy for namespace S3 access"
 
-	iamPolicy := &crossplaneAWSIdentityv1beta1.Policy{
+	policyName := fmt.Sprintf("%s-kubeflow-s3-iam-policy-ns-%s", clusterName, profileIns.Name)
+
+	path := "/"
+
+	iamPolicy := &ackIAM.Policy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("kubeflow-s3-iam-policy-ns-%s", profileIns.Name),
+			Name:      policyName,
 			Namespace: profileIns.Name,
-			Annotations: map[string]string{
-				"crossplane.io/external-name": fmt.Sprintf("arn:aws:iam::%s:policy/%s-kubeflow-s3-iam-policy-ns-%s", awsAccountID, clusterName, profileIns.Name),
-			},
 		},
-		Spec: crossplaneAWSIdentityv1beta1.PolicySpec{
-			xpv1.ResourceSpec{
-				DeletionPolicy: xpv1.DeletionDelete,
-				ProviderConfigReference: &xpv1.Reference{
-					Name: "aws-provider",
-				},
-			},
-			crossplaneAWSIdentityv1beta1.PolicyParameters{
-				Name:        fmt.Sprintf("%s-kubeflow-s3-iam-policy-ns-%s", clusterName, profileIns.Name),
-				Description: &description,
-				Document:    document,
-			},
+		Spec: ackIAM.PolicySpec{
+			Description:    &description,
+			Name:           &policyName,
+			Path:           &path,
+			PolicyDocument: &document,
 		},
 	}
 	return iamPolicy
 }
-func (r *ProfileReconciler) generateKFPIAMRole(profileIns *profilev2alpha1.Profile, awsAccountID string, oidcIssuer string) *crossplaneAWSIdentityv1beta1.Role {
 
+func (r *ProfileReconciler) generateKFPIAMRoleACK(profileIns *profilev2alpha1.Profile, awsAccountID string, oidcIssuer string, clusterName string) *ackIAM.Role {
 	assumeRolePolicyDocumentString := `{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "",
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::%s:oidc-provider/%s"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringLike": {
-          "%s:sub": [
-            "system:serviceaccount:%s:default-editor"
-          ]
-        }
-      }
-    }
-  ]
-}`
+		"Version": "2012-10-17",
+		"Statement": [
+		  {
+			"Sid": "",
+			"Effect": "Allow",
+			"Principal": {
+			  "Federated": "arn:aws:iam::%s:oidc-provider/%s"
+			},
+			"Action": "sts:AssumeRoleWithWebIdentity",
+			"Condition": {
+			  "StringLike": {
+				"%s:sub": [
+				  "system:serviceaccount:%s:default-editor"
+				]
+			  }
+			}
+		  }
+		]
+	  }`
 
 	assumeRolePolicyDocument := fmt.Sprintf(assumeRolePolicyDocumentString, awsAccountID, oidcIssuer, oidcIssuer, profileIns.Name)
 
-	var sessionDuration int32
-	sessionDuration = int32(3600)
+	sessionDuration := int64(3600)
 
-	var path string
-	path = "/"
+	roleName := fmt.Sprintf("%s-kubeflow-assumable-role-ns-%s", clusterName, profileIns.Name)
 
-	iamRole := &crossplaneAWSIdentityv1beta1.Role{
+	path := "/"
+
+	tagKey := "kubeflow-namespace"
+
+	policyArn := fmt.Sprintf("arn:aws:iam::%s:policy/%s", awsAccountID, fmt.Sprintf("%s-kubeflow-s3-iam-policy-ns-%s", clusterName, profileIns.Name))
+
+	iamRole := &ackIAM.Role{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("kubeflow-assumable-role-ns-%s", profileIns.Name),
-			Namespace: profileIns.Namespace,
-			Annotations: map[string]string{
-				"crossplane.io/external-name": fmt.Sprintf("kubeflow-assumable-role-ns-%s", profileIns.Name),
-			},
+			Name:      roleName,
+			Namespace: profileIns.Name,
 		},
-		Spec: crossplaneAWSIdentityv1beta1.RoleSpec{
-			xpv1.ResourceSpec{
-				DeletionPolicy: xpv1.DeletionDelete,
-				ProviderConfigReference: &xpv1.Reference{
-					Name: "aws-provider",
-				},
+		Spec: ackIAM.RoleSpec{
+			AssumeRolePolicyDocument: &assumeRolePolicyDocument,
+			MaxSessionDuration:       &sessionDuration,
+			Name:                     &roleName,
+			Path:                     &path,
+			Policies: []*string{
+				&policyArn,
 			},
-			crossplaneAWSIdentityv1beta1.RoleParameters{
-				AssumeRolePolicyDocument: assumeRolePolicyDocument,
-				MaxSessionDuration:       &sessionDuration,
-				Path:                     &path,
+			Tags: []*ackIAM.Tag{
+				{Key: &tagKey, Value: &profileIns.Name},
 			},
 		},
 	}
 
 	return iamRole
 }
-
-func (r *ProfileReconciler) generateKFPIAMRolePolicyAttachement(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1beta1.RolePolicyAttachment {
-
-	iamRolePolicyAttachement := &crossplaneAWSIdentityv1beta1.RolePolicyAttachment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("role-policy-attachement-ns-%s", profileIns.Name),
-			Namespace: profileIns.Name,
-			Annotations: map[string]string{
-				"crossplane.io/external-name": fmt.Sprintf("role-policy-attachement-ns-%s", profileIns.Name),
-			},
-		},
-		Spec: crossplaneAWSIdentityv1beta1.RolePolicyAttachmentSpec{
-			xpv1.ResourceSpec{
-				DeletionPolicy: xpv1.DeletionDelete,
-				ProviderConfigReference: &xpv1.Reference{
-					Name: "aws-provider",
-				},
-			},
-			crossplaneAWSIdentityv1beta1.RolePolicyAttachmentParameters{
-				PolicyARNRef: &xpv1.Reference{
-					Name: fmt.Sprintf("kubeflow-s3-iam-policy-ns-%s", profileIns.Name),
-				},
-				RoleNameRef: &xpv1.Reference{
-					Name: fmt.Sprintf("kubeflow-assumable-role-ns-%s", profileIns.Name),
-				},
-			},
-		},
-	}
-	return iamRolePolicyAttachement
-}
-
-func (r *ProfileReconciler) generateKFPIAMUser(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1beta1.User {
-
-	iamUser := &crossplaneAWSIdentityv1beta1.User{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
-			Namespace: profileIns.Name,
-			Annotations: map[string]string{
-				"crossplane.io/external-name": fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
-			},
-		},
-		Spec: crossplaneAWSIdentityv1beta1.UserSpec{
-			xpv1.ResourceSpec{
-				DeletionPolicy: xpv1.DeletionDelete,
-				ProviderConfigReference: &xpv1.Reference{
-					Name: "aws-provider",
-				},
-			},
-			crossplaneAWSIdentityv1beta1.UserParameters{},
-		},
-	}
-	return iamUser
-}
-
-func (r *ProfileReconciler) generateKFPIAMUserPolicyAttachement(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1beta1.UserPolicyAttachment {
-
-	iamUserPolicyAttachement := &crossplaneAWSIdentityv1beta1.UserPolicyAttachment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("policy-attachement-ns-%s", profileIns.Name),
-			Namespace: profileIns.Name,
-			Annotations: map[string]string{
-				"crossplane.io/external-name": fmt.Sprintf("policy-attachement-ns-%s", profileIns.Name),
-			},
-		},
-		Spec: crossplaneAWSIdentityv1beta1.UserPolicyAttachmentSpec{
-			xpv1.ResourceSpec{
-				DeletionPolicy: xpv1.DeletionDelete,
-				ProviderConfigReference: &xpv1.Reference{
-					Name: "aws-provider",
-				},
-			},
-			crossplaneAWSIdentityv1beta1.UserPolicyAttachmentParameters{
-				PolicyARNRef: &xpv1.Reference{
-					Name: fmt.Sprintf("kubeflow-s3-iam-policy-ns-%s", profileIns.Name),
-				},
-				UserNameRef: &xpv1.Reference{
-					Name: fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
-				},
-			},
-		},
-	}
-	return iamUserPolicyAttachement
-}
-
-// func (r *ProfileReconciler) generateKFPIAMAccessKey(profileIns *profilev2alpha1.Profile) *crossplaneAWSIdentityv1beta1.AccessKey {
-
-// 	iamAccessKey := &crossplaneAWSIdentityv1beta1.AccessKey{
-// 		ObjectMeta: metav1.ObjectMeta{
-// 			Name:      fmt.Sprintf("access-key-ns-%s", profileIns.Name),
-// 			Namespace: profileIns.Name,
-// 		},
-// 		Spec: crossplaneAWSIdentityv1beta1.AccessKeySpec{
-// 			xpv1.ResourceSpec{
-// 				DeletionPolicy: xpv1.DeletionDelete,
-// 				ProviderConfigReference: &xpv1.Reference{
-// 					Name: "aws-provider",
-// 				},
-// 				WriteConnectionSecretToReference: &xpv1.SecretReference{
-// 					Name:      "pipelines-s3-secret",
-// 					Namespace: profileIns.Name,
-// 				},
-// 			},
-// 			crossplaneAWSIdentityv1beta1.AccessKeyParameters{
-// 				IAMUsernameRef: &xpv1.Reference{
-// 					Name: fmt.Sprintf("iam-user-ns-%s", profileIns.Name),
-// 				},
-// 			},
-// 		},
-// 	}
-
-// 	return iamAccessKey
-// }
