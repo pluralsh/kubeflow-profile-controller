@@ -29,8 +29,6 @@ import (
 
 	// "github.com/ghodss/yaml"
 
-	// crossplaneAWSIdentityv1alpha1 "github.com/crossplane/provider-aws/apis/identity/v1alpha1"
-
 	ackIAM "github.com/aws-controllers-k8s/iam-controller/apis/v1alpha1"
 
 	"github.com/go-logr/logr"
@@ -98,21 +96,17 @@ type Plugin interface {
 // ProfileReconciler reconciles a Profile object
 type ProfileReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Log    logr.Logger
-	// UserIdHeader               string
-	// UserIdPrefix               string
+	Scheme           *runtime.Scheme
+	Log              logr.Logger
 	WorkloadIdentity string
-	// DefaultNamespaceLabelsPath string
-	// Issuer                     string
-	// JwkksUri                    string
-	// PipelineBucket             string
 }
 
 // +kubebuilder:rbac:groups=core,resources=namespaces,verbs="*"
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs="*"
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs="*"
 // +kubebuilder:rbac:groups=security.istio.io,resources=authorizationpolicies,verbs="*"
+// +kubebuilder:rbac:groups=iam.services.k8s.aws,resources=policies;roles,verbs="*"
+// +kubebuilder:rbac:groups=platform.kubeflow.org,resources=configs,verbs="get"
 // +kubebuilder:rbac:groups=kubeflow.org,resources=profiles;profiles/status;profiles/finalizers,verbs="*"
 
 // Reconcile reads that state of the cluster for a Profile object and makes changes based on the state read
@@ -219,19 +213,6 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				"namespace already exist, but not owned by profile creator %v", instance.Spec.Owner.Name))
 		}
 	}
-
-	// xplaneCluster := &crossplaneAWSEKSv1beta1.Cluster{}
-	// if err := r.Get(ctx, types.NamespacedName{Name: "plural-bootstrapped"}, xplaneCluster); err != nil {
-	// 	logger.Error(err, "failed to get CrossPlane cluster resource")
-	// 	return reconcile.Result{}, err
-	// }
-
-	// accountIDRegexp := regexp.MustCompile(`\d{12}\b`)
-	// regionRexexp := regexp.MustCompile(`^(?:[^:]+:){3}([^:]+).*`)
-	// awsAccountID := accountIDRegexp.FindString(xplaneCluster.Spec.ForProvider.RoleArn)
-	// awsRegion := regionRexexp.FindAllStringSubmatch(xplaneCluster.Status.AtProvider.Arn, -1)[0][1]
-	// clusterName := xplaneCluster.ObjectMeta.Annotations["crossplane.io/external-name"]
-	// oidcIssuer := strings.Replace(xplaneCluster.Status.AtProvider.Identity.OIDC.Issuer, "https://", "", -1)
 
 	// Update Istio RequestAuthentication
 	// Create Istio RequestAuthentication in target namespace, which configures Istio with the OIDC provider.

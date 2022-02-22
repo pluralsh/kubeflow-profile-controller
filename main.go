@@ -25,7 +25,6 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	ackIAM "github.com/aws-controllers-k8s/iam-controller/apis/v1alpha1"
-	crossplaneAWS "github.com/crossplane/provider-aws/apis"
 	istioNetworkingClient "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioSecurityClient "istio.io/client-go/pkg/apis/security/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -64,7 +63,6 @@ func init() {
 
 	utilruntime.Must(istioSecurityClient.AddToScheme(scheme))
 	utilruntime.Must(istioNetworkingClient.AddToScheme(scheme))
-	utilruntime.Must(crossplaneAWS.AddToScheme(scheme))
 	utilruntime.Must(ackIAM.AddToScheme(scheme))
 	utilruntime.Must(kubefloworgv2alpha1.AddToScheme(scheme))
 	utilruntime.Must(platformv1alpha1.AddToScheme(scheme))
@@ -75,25 +73,13 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
-	// var userIdHeader string
-	// var userIdPrefix string
 	var workloadIdentity string
-	// var defaultNamespaceLabelsPath string
-	// var issuer string
-	// var jwksUri string
-	// var pipelineBucket string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	// flag.StringVar(&userIdHeader, USERIDHEADER, "x-goog-authenticated-user-email", "Key of request header containing user id")
-	// flag.StringVar(&userIdPrefix, USERIDPREFIX, "accounts.google.com:", "Request header user id common prefix")
 	flag.StringVar(&workloadIdentity, WORKLOADIDENTITY, "", "Default identity (GCP service account) for workload_identity plugin")
-	// flag.StringVar(&defaultNamespaceLabelsPath, DEFAULTNAMESPACELABELSPATH, "/etc/profile-controller/namespace-labels.yaml", "A YAML file with a map of labels to be set on every Profile namespace")
-	// flag.StringVar(&issuer, ISSUER, "", "The OIDC issuer to use for Kubeflow")
-	// flag.StringVar(&jwksUri, JWKSURI, "", "The jwksUri for the OIDC issuer used for Kubeflow")
-	// flag.StringVar(&pipelineBucket, PIPELINEBUCKET, "pipelines-bucket", "The bucket name used for Kubeflow Pipelines")
 
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
@@ -115,16 +101,10 @@ func main() {
 	}
 
 	if err = (&controllers.ProfileReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Profile"),
-		// UserIdHeader:               userIdHeader,
-		// UserIdPrefix:               userIdPrefix,
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		Log:              ctrl.Log.WithName("controllers").WithName("Profile"),
 		WorkloadIdentity: workloadIdentity,
-		// Issuer:                     issuer,
-		// JwksUri:                    jwksUri,
-		// PipelineBucket:             pipelineBucket,
-		// DefaultNamespaceLabelsPath: defaultNamespaceLabelsPath,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Profile")
 		os.Exit(1)

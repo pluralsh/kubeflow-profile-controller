@@ -19,6 +19,13 @@ rules:
   verbs:
   - '*'
 - apiGroups:
+  - iam.services.k8s.aws
+  resources:
+  - policies
+  - roles
+  verbs:
+  - '*'
+- apiGroups:
   - kubeflow.org
   resources:
   - profiles
@@ -26,6 +33,12 @@ rules:
   - profiles/status
   verbs:
   - '*'
+- apiGroups:
+  - platform.kubeflow.org
+  resources:
+  - configs
+  verbs:
+  - get
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
