@@ -22,26 +22,22 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff"
-	"github.com/fsnotify/fsnotify"
 
 	// "github.com/ghodss/yaml"
 
 	// crossplaneAWSIdentityv1alpha1 "github.com/crossplane/provider-aws/apis/identity/v1alpha1"
 
-	crossplaneAWSEKSv1beta1 "github.com/crossplane/provider-aws/apis/eks/v1beta1"
-
 	ackIAM "github.com/aws-controllers-k8s/iam-controller/apis/v1alpha1"
 
 	"github.com/go-logr/logr"
 	"github.com/goccy/go-yaml"
-	"github.com/pkg/errors"
 	reconcilehelper "github.com/pluralsh/controller-reconcile-helper"
 	profilev2alpha1 "github.com/pluralsh/kubeflow-profile-controller/apis/kubeflow.org/v2alpha1"
+	platformv1alpha1 "github.com/pluralsh/kubeflow-profile-controller/apis/platform/v1alpha1"
 	istioNetworking "istio.io/api/networking/v1beta1"
 	istioSecurity "istio.io/api/security/v1beta1"
 	"istio.io/api/type/v1beta1"
@@ -59,7 +55,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -103,15 +98,15 @@ type Plugin interface {
 // ProfileReconciler reconciles a Profile object
 type ProfileReconciler struct {
 	client.Client
-	Scheme                     *runtime.Scheme
-	Log                        logr.Logger
-	UserIdHeader               string
-	UserIdPrefix               string
-	WorkloadIdentity           string
-	DefaultNamespaceLabelsPath string
-	Issuer                     string
-	JwksUri                    string
-	PipelineBucket             string
+	Scheme *runtime.Scheme
+	Log    logr.Logger
+	// UserIdHeader               string
+	// UserIdPrefix               string
+	WorkloadIdentity string
+	// DefaultNamespaceLabelsPath string
+	// Issuer                     string
+	// JwkksUri                    string
+	// PipelineBucket             string
 }
 
 // +kubebuilder:rbac:groups=core,resources=namespaces,verbs="*"
@@ -126,7 +121,6 @@ type ProfileReconciler struct {
 func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	// _ = log.FromContext(ctx)
 	logger := r.Log.WithValues("profile", request.NamespacedName)
-	defaultKubeflowNamespaceLabels := r.readDefaultLabelsFromFile(r.DefaultNamespaceLabelsPath)
 
 	// Fetch the Profile instance
 	instance := &profilev2alpha1.Profile{}
@@ -145,6 +139,13 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return reconcile.Result{}, err
 	}
 
+	kubeflowConfig := &platformv1alpha1.Config{}
+	// Get the Kubeflow config from the cluster
+	if err := r.Get(ctx, types.NamespacedName{Name: "config"}, kubeflowConfig); err != nil {
+		logger.Error(err, "unable to fetch Kubeflow Config")
+		return ctrl.Result{}, err
+	}
+
 	// Update namespace
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -156,7 +157,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			Name: instance.Name,
 		},
 	}
-	setNamespaceLabels(ns, defaultKubeflowNamespaceLabels)
+	setNamespaceLabels(ns, kubeflowConfig.Spec.Namespace.DefaultLabels)
 	logger.Info("List of labels to be added to namespace", "labels", ns.Labels)
 	if err := controllerutil.SetControllerReference(instance, ns, r.Scheme); err != nil {
 		IncRequestErrorCounter("error setting ControllerReference", SEVERITY_MAJOR)
@@ -200,7 +201,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			for k, v := range foundNs.Labels {
 				oldLabels[k] = v
 			}
-			setNamespaceLabels(foundNs, defaultKubeflowNamespaceLabels)
+			setNamespaceLabels(foundNs, kubeflowConfig.Spec.Namespace.DefaultLabels)
 			logger.Info("List of labels to be added to found namespace", "labels", ns.Labels)
 			if !reflect.DeepEqual(oldLabels, foundNs.Labels) {
 				err = r.Update(ctx, foundNs)
@@ -219,22 +220,22 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		}
 	}
 
-	xplaneCluster := &crossplaneAWSEKSv1beta1.Cluster{}
-	if err := r.Get(ctx, types.NamespacedName{Name: "plural-bootstrapped"}, xplaneCluster); err != nil {
-		logger.Error(err, "failed to get CrossPlane cluster resource")
-		return reconcile.Result{}, err
-	}
+	// xplaneCluster := &crossplaneAWSEKSv1beta1.Cluster{}
+	// if err := r.Get(ctx, types.NamespacedName{Name: "plural-bootstrapped"}, xplaneCluster); err != nil {
+	// 	logger.Error(err, "failed to get CrossPlane cluster resource")
+	// 	return reconcile.Result{}, err
+	// }
 
-	accountIDRegexp := regexp.MustCompile(`\d{12}\b`)
-	regionRexexp := regexp.MustCompile(`^(?:[^:]+:){3}([^:]+).*`)
-	awsAccountID := accountIDRegexp.FindString(xplaneCluster.Spec.ForProvider.RoleArn)
-	awsRegion := regionRexexp.FindAllStringSubmatch(xplaneCluster.Status.AtProvider.Arn, -1)[0][1]
-	clusterName := xplaneCluster.ObjectMeta.Annotations["crossplane.io/external-name"]
-	oidcIssuer := strings.Replace(xplaneCluster.Status.AtProvider.Identity.OIDC.Issuer, "https://", "", -1)
+	// accountIDRegexp := regexp.MustCompile(`\d{12}\b`)
+	// regionRexexp := regexp.MustCompile(`^(?:[^:]+:){3}([^:]+).*`)
+	// awsAccountID := accountIDRegexp.FindString(xplaneCluster.Spec.ForProvider.RoleArn)
+	// awsRegion := regionRexexp.FindAllStringSubmatch(xplaneCluster.Status.AtProvider.Arn, -1)[0][1]
+	// clusterName := xplaneCluster.ObjectMeta.Annotations["crossplane.io/external-name"]
+	// oidcIssuer := strings.Replace(xplaneCluster.Status.AtProvider.Identity.OIDC.Issuer, "https://", "", -1)
 
 	// Update Istio RequestAuthentication
 	// Create Istio RequestAuthentication in target namespace, which configures Istio with the OIDC provider.
-	if err = r.updateIstioRequestAuthentication(instance); err != nil {
+	if err = r.updateIstioRequestAuthentication(instance, kubeflowConfig.Spec.Security.OIDC.Issuer, kubeflowConfig.Spec.Security.OIDC.JwksURI); err != nil {
 		logger.Error(err, "error Updating Istio RequestAuthentication permission", "namespace", instance.Name)
 		IncRequestErrorCounter("error updating Istio RequestAuthentication permission", SEVERITY_MAJOR)
 		return reconcile.Result{}, err
@@ -242,7 +243,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	// Update Istio AuthorizationPolicy
 	// Create Istio AuthorizationPolicy in target namespace, which will give ns owner permission to access services in ns.
-	if err = r.updateIstioAuthorizationPolicy(instance); err != nil {
+	if err = r.updateIstioAuthorizationPolicy(instance, kubeflowConfig.Spec.Identity.UserIDPrefix, kubeflowConfig.Spec.Security.OIDC.Issuer); err != nil {
 		logger.Error(err, "error Updating Istio AuthorizationPolicy permission", "namespace", instance.Name)
 		IncRequestErrorCounter("error updating Istio AuthorizationPolicy permission", SEVERITY_MAJOR)
 		return reconcile.Result{}, err
@@ -251,7 +252,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	// Update service accounts
 	// Create service account "default-editor" in target namespace.
 	// "default-editor" would have kubeflowEdit permission: edit all resources in target namespace except rbac.
-	serviceAccounts := r.generateServiceAccounts(instance, awsAccountID, clusterName)
+	serviceAccounts := r.generateServiceAccounts(instance, kubeflowConfig.Spec.Infrastructure.ProviderConfig.AccountID, kubeflowConfig.Spec.Infrastructure.ClusterName)
 	for _, serviceAccount := range serviceAccounts.Items {
 		sa := &serviceAccount
 		if err := ctrl.SetControllerReference(instance, sa, r.Scheme); err != nil {
@@ -435,7 +436,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	// Create the KFP configmap in the user namespace
-	kfpConfigmaps := r.generateKFPConfigmap(instance, awsRegion)
+	kfpConfigmaps := r.generateKFPConfigmap(instance, kubeflowConfig.Spec.Infrastructure.Storage.BucketName, kubeflowConfig.Spec.Infrastructure.ProviderConfig.Region)
 	for _, kfpConfigmap := range kfpConfigmaps.Items {
 		configmap := &kfpConfigmap
 		if err := ctrl.SetControllerReference(instance, configmap, r.Scheme); err != nil {
@@ -505,7 +506,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	// Create the KFP IAM Policy for the user namespace
-	kfpIAMPolicy := r.generateKFPIAMPolicyACK(instance, awsAccountID, clusterName)
+	kfpIAMPolicy := r.generateKFPIAMPolicyACK(instance, kubeflowConfig.Spec.Infrastructure.ProviderConfig.AccountID, kubeflowConfig.Spec.Infrastructure.ClusterName, kubeflowConfig.Spec.Infrastructure.Storage.BucketName)
 	if err := ctrl.SetControllerReference(instance, kfpIAMPolicy, r.Scheme); err != nil {
 		logger.Error(err, "Error setting ControllerReference for KFP IAM Policy")
 		return ctrl.Result{}, err
@@ -516,7 +517,7 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	// Create the KFP IAM Role for the user namespace service account
-	kfpIAMRole := r.generateKFPIAMRoleACK(instance, awsAccountID, oidcIssuer, clusterName)
+	kfpIAMRole := r.generateKFPIAMRoleACK(instance, kubeflowConfig.Spec.Infrastructure.ProviderConfig.AccountID, strings.Replace(kubeflowConfig.Spec.Infrastructure.ProviderConfig.ClusterOIDCIssuer, "https://", "", -1), kubeflowConfig.Spec.Infrastructure.ClusterName)
 	if err := ctrl.SetControllerReference(instance, kfpIAMRole, r.Scheme); err != nil {
 		logger.Error(err, "Error setting ControllerReference for KFP IAM Role")
 		return ctrl.Result{}, err
@@ -543,44 +544,6 @@ func (r *ProfileReconciler) appendErrorConditionAndReturn(ctx context.Context, i
 	return reconcile.Result{}, nil
 }
 
-// ProfileMapper maps an event to a reconciliation of all existing Profiles.
-// type ProfileMapper struct {
-// 	client client.Client
-// 	logger logr.Logger
-// }
-
-// var _ inject.Client = (*ProfileMapper)(nil)
-
-// func (i *ProfileMapper) InjectClient(c client.Client) error {
-// 	i.client = c
-// 	return nil
-// }
-
-// var _ inject.Logger = (*ProfileMapper)(nil)
-
-// func (i *ProfileMapper) InjectLogger(l logr.Logger) error {
-// 	i.logger = l
-// 	return nil
-// }
-
-// func (i *ProfileMapper) Map(a client.Object) []reconcile.Request {
-// 	req := []reconcile.Request{}
-// 	profileList := &profilev2alpha1.ProfileList{}
-// 	err := i.client.List(context.TODO(), profileList)
-// 	if err != nil {
-// 		i.logger.Error(err, "Failed to list profiles in order to trigger reconciliation")
-// 		return req
-// 	}
-// 	for _, p := range profileList.Items {
-// 		req = append(req, reconcile.Request{
-// 			NamespacedName: types.NamespacedName{
-// 				Name:      p.Name,
-// 				Namespace: p.Namespace,
-// 			}})
-// 	}
-// 	return req
-// }
-
 func (r *ProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Watch config file with namespace labels. If the file changes, trigger
 	// a reconciliation for all Profiles.
@@ -602,36 +565,6 @@ func (r *ProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return req
 	})
 
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return errors.Wrap(err, "Failed to start file watcher")
-	}
-	if err := watcher.Add(r.DefaultNamespaceLabelsPath); err != nil {
-		return errors.Wrapf(err, "Failed to watch file %s", r.DefaultNamespaceLabelsPath)
-	}
-	events := make(chan event.GenericEvent)
-	go func(watcher *fsnotify.Watcher, reconcileEvents chan event.GenericEvent) {
-		defer watcher.Close()
-		for {
-			select {
-			case fsEvent := <-watcher.Events:
-				if fsEvent.Op != fsnotify.Remove && fsEvent.Op != fsnotify.Write {
-					break
-				}
-				// ConfigMaps work with symlinks. See:
-				// https://martensson.io/go-fsnotify-and-kubernetes-configmaps/
-				if fsEvent.Op == fsnotify.Remove {
-					watcher.Remove(fsEvent.Name)
-					watcher.Add(r.DefaultNamespaceLabelsPath)
-				}
-				reconcileEvents <- event.GenericEvent{}
-			case err := <-watcher.Errors:
-				r.Log.Error(err, "Error while watching config file", "path",
-					r.DefaultNamespaceLabelsPath)
-			}
-		}
-	}(watcher, events)
-
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&profilev2alpha1.Profile{}).
 		Owns(&corev1.Namespace{}).
@@ -642,12 +575,10 @@ func (r *ProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// Owns(&appsv1.Deployment{}).
 		Owns(&istioNetworkingClient.DestinationRule{}).
 		Owns(&corev1.Service{}).
-		// Owns(&crossplaneAWSIdentityv1alpha1.IAMPolicy{}).
-		// Owns(&crossplaneAWSIdentityv1alpha1.IAMUser{}).
-		// Owns(&crossplaneAWSIdentityv1alpha1.IAMUserPolicyAttachment{}).
-		// Owns(&crossplaneAWSIdentityv1alpha1.IAMAccessKey{}).
+		Owns(&ackIAM.Policy{}).
+		Owns(&ackIAM.Role{}).
 		Watches(
-			&source.Channel{Source: events},
+			&source.Kind{Type: &platformv1alpha1.Config{}},
 			profileMapperFn,
 		).
 		Complete(r)
@@ -656,7 +587,7 @@ func (r *ProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // updateIstioRequestAuthentication create or update Istio RequestAuthentication
 // resources in target namespace owned by "profileIns". The goal is to check
 // the access token is valid and signed by the auth provider.
-func (r *ProfileReconciler) updateIstioRequestAuthentication(profileIns *profilev2alpha1.Profile) error {
+func (r *ProfileReconciler) updateIstioRequestAuthentication(profileIns *profilev2alpha1.Profile, oidcIssuer string, jwksUri string) error {
 	logger := r.Log.WithValues("profile", profileIns.Name)
 
 	istioRequestAuth := &istioSecurityClient.RequestAuthentication{
@@ -668,8 +599,8 @@ func (r *ProfileReconciler) updateIstioRequestAuthentication(profileIns *profile
 			Selector: nil,
 			JwtRules: []*istioSecurity.JWTRule{
 				{
-					Issuer:  r.Issuer,
-					JwksUri: r.JwksUri,
+					Issuer:  oidcIssuer,
+					JwksUri: jwksUri,
 				},
 			},
 		},
@@ -702,7 +633,7 @@ func (r *ProfileReconciler) updateIstioRequestAuthentication(profileIns *profile
 		if !reflect.DeepEqual(istioRequestAuth, foundRequestAuthentication) {
 			foundRequestAuthentication.Spec = istioRequestAuth.Spec
 			logger.Info("Updating Istio RequestAuthentication", "namespace", istioRequestAuth.ObjectMeta.Namespace,
-				"name", istioRequestAuth.ObjectMeta.Name, "issuer", r.Issuer, "jwks-uri", r.JwksUri)
+				"name", istioRequestAuth.ObjectMeta.Name, "issuer", oidcIssuer, "jwks-uri", jwksUri)
 			err = r.Update(context.TODO(), foundRequestAuthentication)
 			if err != nil {
 				return err
@@ -712,7 +643,7 @@ func (r *ProfileReconciler) updateIstioRequestAuthentication(profileIns *profile
 	return nil
 }
 
-func (r *ProfileReconciler) getAuthorizationPolicy(profileIns *profilev2alpha1.Profile) istioSecurity.AuthorizationPolicy {
+func (r *ProfileReconciler) getAuthorizationPolicy(profileIns *profilev2alpha1.Profile, userIdPrefix string, oidcIssuer string) istioSecurity.AuthorizationPolicy {
 	return istioSecurity.AuthorizationPolicy{
 		Action: istioSecurity.AuthorizationPolicy_ALLOW,
 		// Empty selector == match all workloads in namespace
@@ -723,7 +654,7 @@ func (r *ProfileReconciler) getAuthorizationPolicy(profileIns *profilev2alpha1.P
 					{
 						Source: &istioSecurity.Source{
 							RequestPrincipals: []string{
-								fmt.Sprintf("%v/*", r.Issuer),
+								fmt.Sprintf("%v/*", oidcIssuer),
 							},
 						},
 					},
@@ -734,7 +665,7 @@ func (r *ProfileReconciler) getAuthorizationPolicy(profileIns *profilev2alpha1.P
 						// namespace
 						Key: fmt.Sprint("request.auth.claims[email]"), // fmt.Sprintf("request.headers[%v]", r.UserIdHeader),
 						Values: []string{
-							r.UserIdPrefix + profileIns.Spec.Owner.Name,
+							userIdPrefix + profileIns.Spec.Owner.Name,
 						},
 					},
 				},
@@ -793,7 +724,7 @@ func (r *ProfileReconciler) getAuthorizationPolicy(profileIns *profilev2alpha1.P
 // updateIstioAuthorizationPolicy create or update Istio AuthorizationPolicy
 // resources in target namespace owned by "profileIns". The goal is to allow
 // service access for profile owner.
-func (r *ProfileReconciler) updateIstioAuthorizationPolicy(profileIns *profilev2alpha1.Profile) error {
+func (r *ProfileReconciler) updateIstioAuthorizationPolicy(profileIns *profilev2alpha1.Profile, userIdPrefix string, oidcIssuer string) error {
 	logger := r.Log.WithValues("profile", profileIns.Name)
 
 	istioAuth := &istioSecurityClient.AuthorizationPolicy{
@@ -802,7 +733,7 @@ func (r *ProfileReconciler) updateIstioAuthorizationPolicy(profileIns *profilev2
 			Name:        AUTHZPOLICYISTIO,
 			Namespace:   profileIns.Name,
 		},
-		Spec: r.getAuthorizationPolicy(profileIns),
+		Spec: r.getAuthorizationPolicy(profileIns, userIdPrefix, oidcIssuer),
 	}
 
 	if err := controllerutil.SetControllerReference(profileIns, istioAuth, r.Scheme); err != nil {
@@ -1103,7 +1034,7 @@ func (r *ProfileReconciler) readDefaultLabelsFromFile(path string) map[string]st
 	return labels
 }
 
-func (r *ProfileReconciler) generateKFPConfigmap(profileIns *profilev2alpha1.Profile, awsRegion string) *corev1.ConfigMapList {
+func (r *ProfileReconciler) generateKFPConfigmap(profileIns *profilev2alpha1.Profile, pipelineBucket string, awsRegion string) *corev1.ConfigMapList {
 
 	argoArtifactRepoString := `archiveLogs: true
 s3:
@@ -1114,7 +1045,7 @@ s3:
   insecure: false
   keyFormat: "pipelines/{{workflow.namespace}}/pipelines/{{workflow.name}}/{{pod.name}}"`
 
-	argoArtifactRepo := fmt.Sprintf(argoArtifactRepoString, r.PipelineBucket, awsRegion)
+	argoArtifactRepo := fmt.Sprintf(argoArtifactRepoString, pipelineBucket, awsRegion)
 
 	configmaps := &corev1.ConfigMapList{
 		Items: []corev1.ConfigMap{
@@ -1134,7 +1065,7 @@ s3:
 					Namespace: profileIns.Name,
 				},
 				Data: map[string]string{
-					"defaultPipelineRoot": fmt.Sprintf("s3://%s/pipelines", r.PipelineBucket),
+					"defaultPipelineRoot": fmt.Sprintf("s3://%s/pipelines", pipelineBucket),
 				},
 			},
 			{
@@ -1366,7 +1297,7 @@ func (r *ProfileReconciler) generateKFPServices(profileIns *profilev2alpha1.Prof
 	return services
 }
 
-func (r *ProfileReconciler) generateKFPIAMPolicyACK(profileIns *profilev2alpha1.Profile, awsAccountID string, clusterName string) *ackIAM.Policy {
+func (r *ProfileReconciler) generateKFPIAMPolicyACK(profileIns *profilev2alpha1.Profile, awsAccountID string, clusterName string, pipelineBucket string) *ackIAM.Policy {
 
 	documentString := `{
 	"Version": "2012-10-17",
@@ -1408,7 +1339,7 @@ func (r *ProfileReconciler) generateKFPIAMPolicyACK(profileIns *profilev2alpha1.
 	]
 }`
 
-	document := fmt.Sprintf(documentString, r.PipelineBucket, r.PipelineBucket, profileIns.Name, r.PipelineBucket, profileIns.Name, strings.Replace(profileIns.Name, "-", "", -1), r.PipelineBucket, profileIns.Name)
+	document := fmt.Sprintf(documentString, pipelineBucket, pipelineBucket, profileIns.Name, pipelineBucket, profileIns.Name, strings.Replace(profileIns.Name, "-", "", -1), pipelineBucket, profileIns.Name)
 
 	description := "policy for namespace S3 access"
 

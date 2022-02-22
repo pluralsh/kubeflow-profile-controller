@@ -6,7 +6,6 @@ require (
 	github.com/aws-controllers-k8s/iam-controller v0.0.6
 	github.com/aws/aws-sdk-go v1.42.0
 	github.com/cenkalti/backoff v2.2.1+incompatible
-	github.com/crossplane/crossplane-runtime v0.15.1-0.20210930095326-d5661210733b
 	github.com/crossplane/provider-aws v0.22.0
 	github.com/fsnotify/fsnotify v1.5.1
 	// github.com/ghodss/yaml v1.0.0 // indirect
