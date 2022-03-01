@@ -27,4 +27,12 @@ resources:
   kind: Profile
   path: github.com/pluralsh/kubeflow-profile-controller/apis/kubeflow.org/v2alpha1
   version: v2alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: kubeflow.org
+  group: platform
+  kind: Config
+  path: github.com/pluralsh/kubeflow-profile-controller/apis/platform/v1alpha1
+  version: v1alpha1
 version: "3"

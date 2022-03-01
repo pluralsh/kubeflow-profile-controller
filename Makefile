@@ -60,8 +60,10 @@ test: manifests generate fmt vet ## Run tests.
 build: generate fmt vet ## Build manager binary.
 	go build -o bin/manager main.go
 
+# go run ./main.go -zap-devel -zap-log-level 2 -userid-header "kubeflow-userid" -userid-prefix "" -workload-identity "" -namespace-labels-path ./config/base/namespace-labels.yaml -issuer https://oidc.plural.sh/ -jwks-uri https://oidc.plural.sh/.well-known/jwks.json -pipeline-bucket pipelines-bucket
+
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./main.go -zap-devel -zap-log-level 2 -userid-header "kubeflow-userid" -userid-prefix "" -workload-identity "" -namespace-labels-path ./config/base/namespace-labels.yaml -issuer https://oidc.plural.sh/ -jwks-uri https://oidc.plural.sh/.well-known/jwks.json -pipeline-bucket pipelines-bucket
+	go run ./main.go -zap-devel -zap-log-level 2 -workload-identity ""
 
 docker-build: test ## Build docker image with the manager.
 	docker build -t ${IMG} .

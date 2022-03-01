@@ -1,0 +1,33 @@
+apiVersion: platform.kubeflow.org/v1alpha1
+kind: Config
+metadata:
+  name: config
+spec:
+  infrastructure:
+    clusterName: my-cluster-name
+    provider: AWS
+    providerConfig:
+      accountID: "123456789012"
+      region: us-east-2
+      clusterOIDCIssuer: "https://oidc.eks.us-east-2.amazonaws.com/id/1234567890ABCDEF"
+    storage:
+      provider: S3
+      bucketName: my-kubeflow-pipelines-bucket
+  namespace:
+    defaultLabels:
+      katib-metricscollector-injection:      'enabled'
+      serving.kubeflow.org/inferenceservice: 'enabled'
+      pipelines.kubeflow.org/enabled:        'true'
+  network:
+    hostname: kubeflow.my-company.com
+    clusterDomain: cluster.local
+    istio:
+      clusterGateway:
+        name: kubeflow-gateway
+        namespace: kubeflow
+  security:
+    oidc:
+      issuer: https://oidc.plural.sh/
+      jwksURI: https://oidc.plural.sh/.well-known/jwks.json
+  identity:
+    userIdPrefix: ""
