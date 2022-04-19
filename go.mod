@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go v1.42.0
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	// github.com/ghodss/yaml v1.0.0 // indirect
-	github.com/go-logr/logr v1.2.0
+	github.com/go-logr/logr v1.2.3
 	github.com/goccy/go-yaml v1.9.4
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
