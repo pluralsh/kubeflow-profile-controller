@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/aws-controllers-k8s/iam-controller v0.0.6
-	github.com/aws/aws-sdk-go v1.42.0
+	github.com/aws/aws-sdk-go v1.42.53
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	// github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-logr/logr v1.2.0
