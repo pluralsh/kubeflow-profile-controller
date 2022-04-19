@@ -25,6 +25,7 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	ackIAM "github.com/aws-controllers-k8s/iam-controller/apis/v1alpha1"
+	istioNetworkingClientv1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
 	istioNetworkingClient "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioSecurityClient "istio.io/client-go/pkg/apis/security/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -63,6 +64,7 @@ func init() {
 
 	utilruntime.Must(istioSecurityClient.AddToScheme(scheme))
 	utilruntime.Must(istioNetworkingClient.AddToScheme(scheme))
+	utilruntime.Must(istioNetworkingClientv1alpha3.AddToScheme(scheme))
 	utilruntime.Must(ackIAM.AddToScheme(scheme))
 	utilruntime.Must(kubefloworgv2alpha1.AddToScheme(scheme))
 	utilruntime.Must(platformv1alpha1.AddToScheme(scheme))

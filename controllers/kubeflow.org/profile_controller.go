@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	// "github.com/ghodss/yaml"
 
@@ -33,12 +34,15 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/goccy/go-yaml"
+	_struct "github.com/golang/protobuf/ptypes/struct"
 	reconcilehelper "github.com/pluralsh/controller-reconcile-helper"
 	profilev2alpha1 "github.com/pluralsh/kubeflow-profile-controller/apis/kubeflow.org/v2alpha1"
 	platformv1alpha1 "github.com/pluralsh/kubeflow-profile-controller/apis/platform/v1alpha1"
+	istioNetworkingv1alpha3 "istio.io/api/networking/v1alpha3"
 	istioNetworking "istio.io/api/networking/v1beta1"
 	istioSecurity "istio.io/api/security/v1beta1"
 	"istio.io/api/type/v1beta1"
+	istioNetworkingClientv1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
 	istioNetworkingClient "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioSecurityClient "istio.io/client-go/pkg/apis/security/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -445,31 +449,25 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	// Create the KFP destination rules in the user namespace
-	kfpDestinationRules := r.generateKFPDestinationRules(instance)
-	for _, destinationRule := range kfpDestinationRules.Items {
-		rule := &destinationRule
-		if err := ctrl.SetControllerReference(instance, rule, r.Scheme); err != nil {
-			logger.Error(err, "Error setting ControllerReference for KFP DestinationRule")
-			return ctrl.Result{}, err
-		}
-		if err := reconcilehelper.DestinationRule(ctx, r.Client, rule, logger); err != nil {
-			logger.Error(err, "Error reconciling KFP destination rule", "namespace", rule.Namespace)
-			return ctrl.Result{}, err
-		}
+	kfpDestinationRule := r.generateKFPDestinationRule(instance)
+	if err := ctrl.SetControllerReference(instance, kfpDestinationRule, r.Scheme); err != nil {
+		logger.Error(err, "Error setting ControllerReference for KFP DestinationRule")
+		return ctrl.Result{}, err
+	}
+	if err := reconcilehelper.DestinationRule(ctx, r.Client, kfpDestinationRule, logger); err != nil {
+		logger.Error(err, "Error reconciling KFP destination rule", "namespace", kfpDestinationRule.Namespace)
+		return ctrl.Result{}, err
 	}
 
 	// Create the KFP AuthorizationPolicies in the user namespace
-	kfpAuthorizationPolicies := r.generateKFPAuthorizationPolicies(instance)
-	for _, authorizationPolicy := range kfpAuthorizationPolicies.Items {
-		authPolicy := &authorizationPolicy
-		if err := ctrl.SetControllerReference(instance, authPolicy, r.Scheme); err != nil {
-			logger.Error(err, "Error setting ControllerReference for KFP AuthorizationPolicy")
-			return ctrl.Result{}, err
-		}
-		if err := reconcilehelper.AuthorizationPolicy(ctx, r.Client, authPolicy, logger); err != nil {
-			logger.Error(err, "Error reconciling KFP AuthorizationPolicy", "namespace", authorizationPolicy.Namespace)
-			return ctrl.Result{}, err
-		}
+	kfpAuthorizationPolicy := r.generateKFPAuthorizationPolicy(instance)
+	if err := ctrl.SetControllerReference(instance, kfpAuthorizationPolicy, r.Scheme); err != nil {
+		logger.Error(err, "Error setting ControllerReference for KFP AuthorizationPolicy")
+		return ctrl.Result{}, err
+	}
+	if err := reconcilehelper.AuthorizationPolicy(ctx, r.Client, kfpAuthorizationPolicy, logger); err != nil {
+		logger.Error(err, "Error reconciling KFP AuthorizationPolicy", "namespace", kfpAuthorizationPolicy.Namespace)
+		return ctrl.Result{}, err
 	}
 
 	// Create the KFP Services in the user namespace
@@ -486,26 +484,50 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		}
 	}
 
-	// Create the KFP IAM Policy for the user namespace
-	kfpIAMPolicy := r.generateKFPIAMPolicyACK(instance, kubeflowConfig.Spec.Infrastructure.ProviderConfig.AccountID, kubeflowConfig.Spec.Infrastructure.ClusterName, kubeflowConfig.Spec.Infrastructure.Storage.BucketName)
-	if err := ctrl.SetControllerReference(instance, kfpIAMPolicy, r.Scheme); err != nil {
-		logger.Error(err, "Error setting ControllerReference for KFP IAM Policy")
+	// Create Istio PeerAuthentication resources in the user namespace
+	peerAutehntication := r.generatePeerAuthentication(instance)
+	if err := ctrl.SetControllerReference(instance, peerAutehntication, r.Scheme); err != nil {
+		logger.Error(err, "Error setting ControllerReference for Istio PeerAuthentication")
 		return ctrl.Result{}, err
 	}
-	if err := reconcilehelper.ACKIAMPolicy(ctx, r.Client, kfpIAMPolicy, logger); err != nil {
-		logger.Error(err, "Error reconciling KFP IAM Policy", "namespace", kfpIAMPolicy.Namespace)
+	if err := reconcilehelper.PeerAuthentication(ctx, r.Client, peerAutehntication, logger); err != nil {
+		logger.Error(err, "Error reconciling Istio PeerAuthentication", "namespace", peerAutehntication.Namespace)
 		return ctrl.Result{}, err
 	}
 
-	// Create the KFP IAM Role for the user namespace service account
-	kfpIAMRole := r.generateKFPIAMRoleACK(instance, kubeflowConfig.Spec.Infrastructure.ProviderConfig.AccountID, strings.Replace(kubeflowConfig.Spec.Infrastructure.ProviderConfig.ClusterOIDCIssuer, "https://", "", -1), kubeflowConfig.Spec.Infrastructure.ClusterName)
-	if err := ctrl.SetControllerReference(instance, kfpIAMRole, r.Scheme); err != nil {
-		logger.Error(err, "Error setting ControllerReference for KFP IAM Role")
+	// Create Istio EnvoyFilter resources in the user namespace
+	envoyFilter := r.generateEnvoyFilter(instance)
+	if err := ctrl.SetControllerReference(instance, envoyFilter, r.Scheme); err != nil {
+		logger.Error(err, "Error setting ControllerReference for Istio EnvoyFilter")
 		return ctrl.Result{}, err
 	}
-	if err := reconcilehelper.ACKIAMRole(ctx, r.Client, kfpIAMRole, logger); err != nil {
-		logger.Error(err, "Error reconciling KFP IAM Role", "namespace", kfpIAMRole.Namespace)
+	if err := reconcilehelper.EnvoyFilter(ctx, r.Client, envoyFilter, logger); err != nil {
+		logger.Error(err, "Error reconciling Istio EnvoyFilter", "namespace", peerAutehntication.Namespace)
 		return ctrl.Result{}, err
+	}
+
+	// Create the KFP IAM Policy for the user namespace
+	if kubeflowConfig.Spec.Infrastructure.Provider == "AWS" {
+		kfpIAMPolicy := r.generateKFPIAMPolicyACK(instance, kubeflowConfig.Spec.Infrastructure.ProviderConfig.AccountID, kubeflowConfig.Spec.Infrastructure.ClusterName, kubeflowConfig.Spec.Infrastructure.Storage.BucketName)
+		if err := ctrl.SetControllerReference(instance, kfpIAMPolicy, r.Scheme); err != nil {
+			logger.Error(err, "Error setting ControllerReference for KFP IAM Policy")
+			return ctrl.Result{}, err
+		}
+		if err := reconcilehelper.ACKIAMPolicy(ctx, r.Client, kfpIAMPolicy, logger); err != nil {
+			logger.Error(err, "Error reconciling KFP IAM Policy", "namespace", kfpIAMPolicy.Namespace)
+			return ctrl.Result{}, err
+		}
+
+		// Create the KFP IAM Role for the user namespace service account
+		kfpIAMRole := r.generateKFPIAMRoleACK(instance, kubeflowConfig.Spec.Infrastructure.ProviderConfig.AccountID, strings.Replace(kubeflowConfig.Spec.Infrastructure.ProviderConfig.ClusterOIDCIssuer, "https://", "", -1), kubeflowConfig.Spec.Infrastructure.ClusterName)
+		if err := ctrl.SetControllerReference(instance, kfpIAMRole, r.Scheme); err != nil {
+			logger.Error(err, "Error setting ControllerReference for KFP IAM Role")
+			return ctrl.Result{}, err
+		}
+		if err := reconcilehelper.ACKIAMRole(ctx, r.Client, kfpIAMRole, logger); err != nil {
+			logger.Error(err, "Error reconciling KFP IAM Role", "namespace", kfpIAMRole.Namespace)
+			return ctrl.Result{}, err
+		}
 	}
 
 	IncRequestCounter("reconcile")
@@ -555,9 +577,11 @@ func (r *ProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.ConfigMap{}).
 		// Owns(&appsv1.Deployment{}).
 		Owns(&istioNetworkingClient.DestinationRule{}).
+		Owns(&istioNetworkingClientv1alpha3.EnvoyFilter{}).
+		Owns(&istioSecurityClient.PeerAuthentication{}).
 		Owns(&corev1.Service{}).
-		Owns(&ackIAM.Policy{}).
-		Owns(&ackIAM.Role{}).
+		// Owns(&ackIAM.Policy{}).
+		// Owns(&ackIAM.Role{}).
 		Watches(
 			&source.Kind{Type: &platformv1alpha1.Config{}},
 			profileMapperFn,
@@ -612,7 +636,7 @@ func (r *ProfileReconciler) updateIstioRequestAuthentication(profileIns *profile
 		}
 	} else {
 		if !reflect.DeepEqual(istioRequestAuth, foundRequestAuthentication) {
-			foundRequestAuthentication.Spec = istioRequestAuth.Spec
+			istioRequestAuth.Spec.DeepCopyInto(&foundRequestAuthentication.Spec)
 			logger.Info("Updating Istio RequestAuthentication", "namespace", istioRequestAuth.ObjectMeta.Namespace,
 				"name", istioRequestAuth.ObjectMeta.Name, "issuer", oidcIssuer, "jwks-uri", jwksUri)
 			err = r.Update(context.TODO(), foundRequestAuthentication)
@@ -685,7 +709,6 @@ func (r *ProfileReconciler) getAuthorizationPolicy(profileIns *profilev2alpha1.P
 								"/metrics",
 								"/ready",
 								"/wait-for-drain",
-								"/v1/models/*",
 							},
 						},
 					},
@@ -695,6 +718,28 @@ func (r *ProfileReconciler) getAuthorizationPolicy(profileIns *profilev2alpha1.P
 						// Allow access to above paths from the knative namespace
 						Key:    fmt.Sprintf("source.namespace"),
 						Values: []string{"knative"},
+					},
+				},
+			},
+			{
+				To: []*istioSecurity.Rule_To{
+					{
+						Operation: &istioSecurity.Operation{
+							// Workloads pathes should be accessible for KNative's
+							// `activator` and `controller` probes
+							// See: https://knative.dev/docs/serving/istio-authorization/#allowing-access-from-system-pods-by-paths
+							Paths: []string{
+								"/v1/models/*",
+								"/v2/models/*",
+							},
+						},
+					},
+				},
+				When: []*istioSecurity.Condition{
+					{
+						// Allow access to above paths from the knative namespace
+						Key:    fmt.Sprintf("request.headers[kubeflow-request-source-namespace]"),
+						Values: []string{profileIns.Name},
 					},
 				},
 			},
@@ -742,7 +787,7 @@ func (r *ProfileReconciler) updateIstioAuthorizationPolicy(profileIns *profilev2
 		}
 	} else {
 		if !reflect.DeepEqual(istioAuth, foundAuthorizationPolicy) {
-			foundAuthorizationPolicy.Spec = istioAuth.Spec
+			istioAuth.Spec.DeepCopyInto(&foundAuthorizationPolicy.Spec)
 			logger.Info("Updating Istio AuthorizationPolicy", "namespace", istioAuth.ObjectMeta.Namespace,
 				"name", istioAuth.ObjectMeta.Name)
 			err = r.Update(context.TODO(), foundAuthorizationPolicy)
@@ -1015,6 +1060,91 @@ func (r *ProfileReconciler) readDefaultLabelsFromFile(path string) map[string]st
 	return labels
 }
 
+func (r *ProfileReconciler) generatePeerAuthentication(profileIns *profilev2alpha1.Profile) *istioSecurityClient.PeerAuthentication {
+
+	peerAuthentication := &istioSecurityClient.PeerAuthentication{
+
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "kserve-force-strict",
+			Namespace: profileIns.Name,
+		},
+		Spec: istioSecurity.PeerAuthentication{
+			Mtls: &istioSecurity.PeerAuthentication_MutualTLS{
+				Mode: istioSecurity.PeerAuthentication_MutualTLS_STRICT,
+			},
+		},
+	}
+	return peerAuthentication
+}
+
+func (r *ProfileReconciler) generateEnvoyFilter(profileIns *profilev2alpha1.Profile) *istioNetworkingClientv1alpha3.EnvoyFilter {
+
+	envoyfilter := &istioNetworkingClientv1alpha3.EnvoyFilter{
+
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "add-kubeflow-source-namespace-header",
+			Namespace: profileIns.Name,
+		},
+		Spec: istioNetworkingv1alpha3.EnvoyFilter{
+			ConfigPatches: []*istioNetworkingv1alpha3.EnvoyFilter_EnvoyConfigObjectPatch{
+				{
+					ApplyTo: istioNetworkingv1alpha3.EnvoyFilter_HTTP_FILTER,
+					Match: &istioNetworkingv1alpha3.EnvoyFilter_EnvoyConfigObjectMatch{
+						Context: istioNetworkingv1alpha3.EnvoyFilter_SIDECAR_OUTBOUND,
+						ObjectTypes: &istioNetworkingv1alpha3.EnvoyFilter_EnvoyConfigObjectMatch_Listener{
+							Listener: &istioNetworkingv1alpha3.EnvoyFilter_ListenerMatch{
+								FilterChain: &istioNetworkingv1alpha3.EnvoyFilter_ListenerMatch_FilterChainMatch{
+									Filter: &istioNetworkingv1alpha3.EnvoyFilter_ListenerMatch_FilterMatch{
+										Name: "envoy.filters.network.http_connection_manager",
+										SubFilter: &istioNetworkingv1alpha3.EnvoyFilter_ListenerMatch_SubFilterMatch{
+											Name: "envoy.filters.http.router",
+										},
+									},
+								},
+							},
+						},
+					},
+					// we use replace on the header so that existing values are overwritten.
+					Patch: &istioNetworkingv1alpha3.EnvoyFilter_Patch{
+						Operation: istioNetworkingv1alpha3.EnvoyFilter_Patch_INSERT_BEFORE,
+						Value: &_struct.Struct{
+							Fields: map[string]*structpb.Value{
+								"name": {
+									Kind: &structpb.Value_StringValue{
+										StringValue: "envoy.filters.http.lua",
+									},
+								},
+								"typed_config": {
+									Kind: &structpb.Value_StructValue{
+										StructValue: &_struct.Struct{
+											Fields: map[string]*structpb.Value{
+												"@type": {
+													Kind: &structpb.Value_StringValue{
+														StringValue: "type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua",
+													},
+												},
+												"inline_code": {
+													Kind: &structpb.Value_StringValue{
+														StringValue: `function envoy_on_request(request_handle)
+  headers = request_handle:headers()
+  request_handle:headers():replace("kubeflow-request-source-namespace", "david")
+end`,
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	return envoyfilter
+}
+
 func (r *ProfileReconciler) generateKFPConfigmap(profileIns *profilev2alpha1.Profile, pipelineBucket string, awsRegion string) *corev1.ConfigMapList {
 
 	argoArtifactRepoString := `archiveLogs: true
@@ -1165,52 +1295,45 @@ func (r *ProfileReconciler) generateKFPDeployments(profileIns *profilev2alpha1.P
 	return deployments
 }
 
-func (r *ProfileReconciler) generateKFPDestinationRules(profileIns *profilev2alpha1.Profile) *istioNetworkingClient.DestinationRuleList {
+func (r *ProfileReconciler) generateKFPDestinationRule(profileIns *profilev2alpha1.Profile) *istioNetworkingClient.DestinationRule {
 
-	destinationRules := &istioNetworkingClient.DestinationRuleList{
-		Items: []istioNetworkingClient.DestinationRule{
-			{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "ml-pipeline-visualizationserver",
-					Namespace: profileIns.Name,
-				},
-				Spec: istioNetworking.DestinationRule{
-					Host: "ml-pipeline-visualizationserver",
-					TrafficPolicy: &istioNetworking.TrafficPolicy{
-						Tls: &istioNetworking.ClientTLSSettings{
-							Mode: istioNetworking.ClientTLSSettings_ISTIO_MUTUAL,
-						},
-					},
+	destinationRule := &istioNetworkingClient.DestinationRule{
+
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ml-pipeline-visualizationserver",
+			Namespace: profileIns.Name,
+		},
+		Spec: istioNetworking.DestinationRule{
+			Host: "ml-pipeline-visualizationserver",
+			TrafficPolicy: &istioNetworking.TrafficPolicy{
+				Tls: &istioNetworking.ClientTLSSettings{
+					Mode: istioNetworking.ClientTLSSettings_ISTIO_MUTUAL,
 				},
 			},
 		},
 	}
-	return destinationRules
+	return destinationRule
 }
 
-func (r *ProfileReconciler) generateKFPAuthorizationPolicies(profileIns *profilev2alpha1.Profile) *istioSecurityClient.AuthorizationPolicyList {
+func (r *ProfileReconciler) generateKFPAuthorizationPolicy(profileIns *profilev2alpha1.Profile) *istioSecurityClient.AuthorizationPolicy {
 
-	authorizationPolicies := &istioSecurityClient.AuthorizationPolicyList{
-		Items: []istioSecurityClient.AuthorizationPolicy{
-			{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "ml-pipeline-visualizationserver",
-					Namespace: profileIns.Name,
+	authorizationPolicy := &istioSecurityClient.AuthorizationPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ml-pipeline-visualizationserver",
+			Namespace: profileIns.Name,
+		},
+		Spec: istioSecurity.AuthorizationPolicy{
+			Selector: &v1beta1.WorkloadSelector{
+				MatchLabels: map[string]string{
+					"app": "ml-pipeline-visualizationserver",
 				},
-				Spec: istioSecurity.AuthorizationPolicy{
-					Selector: &v1beta1.WorkloadSelector{
-						MatchLabels: map[string]string{
-							"app": "ml-pipeline-visualizationserver",
-						},
-					},
-					Rules: []*istioSecurity.Rule{
+			},
+			Rules: []*istioSecurity.Rule{
+				{
+					From: []*istioSecurity.Rule_From{
 						{
-							From: []*istioSecurity.Rule_From{
-								{
-									Source: &istioSecurity.Source{
-										Principals: []string{"cluster.local/ns/kubeflow/sa/ml-pipeline"},
-									},
-								},
+							Source: &istioSecurity.Source{
+								Principals: []string{"cluster.local/ns/kubeflow/sa/ml-pipeline"},
 							},
 						},
 					},
@@ -1218,7 +1341,7 @@ func (r *ProfileReconciler) generateKFPAuthorizationPolicies(profileIns *profile
 			},
 		},
 	}
-	return authorizationPolicies
+	return authorizationPolicy
 }
 
 func (r *ProfileReconciler) generateKFPServices(profileIns *profilev2alpha1.Profile) *corev1.ServiceList {
