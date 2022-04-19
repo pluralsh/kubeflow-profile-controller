@@ -1,0 +1,109 @@
+ignore:
+  resource_names:
+   - AccessKey
+   - AccountAlias
+   - Group
+   - InstanceProfile
+   - LoginProfile
+   - OpenIDConnectProvider
+   #- Policy
+   - PolicyVersion
+   #- Role
+   - SAMLProvider
+   - ServiceLinkedRole
+   - ServiceSpecificCredential
+   - User
+   - VirtualMFADevice
+resources:
+  Policy:
+    renames:
+      operations:
+        CreatePolicy:
+          input_fields:
+            PolicyName: Name
+        GetPolicy:
+          input_fields:
+            PolicyName: Name
+        DeletePolicy:
+          input_fields:
+            PolicyName: Name
+    hooks:
+      sdk_read_one_post_set_output:
+        template_path: hooks/policy/sdk_read_one_post_set_output.go.tpl
+      sdk_create_post_set_output:
+        template_path: hooks/policy/sdk_create_post_set_output.go.tpl
+    update_operation:
+      # There is no `UpdatePolicy` API operation. The only way to update a 
+      # policy is to update the properties individually (only a few properties
+      # support this) or to delete the policy and recreate it entirely. 
+      #
+      # This custom method will support updating the properties individually,
+      # but there is currently no support for the delete/create option.
+      custom_method_name: customUpdatePolicy
+    exceptions:
+      terminal_codes:
+        - InvalidInput
+        - MalformedPolicyDocument
+    fields:
+      Description:
+        # You might be wondering why description is late-initialized, since
+        # there isn't a default server-side value for description.
+        #
+        # The CreatePolicy API call accepts a Description field in the input
+        # and the documentation (and API model) say that a Description field is
+        # included in the returned response from CreatePolicy, however the
+        # Description returned from the CreatePolicy API call is always
+        # missing/nil which means the SetResource code sets the
+        # Spec.Description to nil. When the next time the GetPolicy API call is
+        # made in the next reconciliation loop, GetPolicy returns the
+        # description that was originally set in the CreatePolicy API call and
+        # a Delta difference is discovered erroneously (because the SetResource
+        # call after CreatePolicy incorrectly set the description to nil). So,
+        # we set the late initialize property of the Description field here to
+        # override the Spec.Description to the original value we set in the
+        # CreatePolicy *input* shape.
+        late_initialize: {}
+      Path:
+        late_initialize: {}
+  Role:
+    hooks:
+      sdk_read_one_post_set_output:
+        template_path: hooks/role/sdk_read_one_post_set_output.go.tpl
+      sdk_create_post_set_output:
+        template_path: hooks/role/sdk_create_post_set_output.go.tpl
+      sdk_update_post_set_output:
+        template_path: hooks/role/sdk_update_post_set_output.go.tpl
+      sdk_delete_pre_build_request:
+        template_path: hooks/role/sdk_delete_pre_build_request.go.tpl
+    exceptions:
+      terminal_codes:
+        - InvalidInput
+        - MalformedPolicyDocument
+    renames:
+      operations:
+        CreateRole:
+          input_fields:
+            RoleName: Name
+        GetRole:
+          input_fields:
+            RoleName: Name
+        UpdateRole:
+          input_fields:
+            RoleName: Name
+        DeleteRole:
+          input_fields:
+            RoleName: Name
+    fields:
+      MaxSessionDuration:
+        late_initialize: {}
+      PermissionsBoundary:
+        set:
+          # The input and output shapes are different...
+          - from: PermissionsBoundary.PermissionsBoundaryArn
+      Path:
+        late_initialize: {}
+      # In order to support attaching zero or more policies to a role, we use
+      # custom update code path code that uses the Attach/DetachRolePolicy API
+      # calls to manage the set of PolicyARNs attached to this Role.
+      Policies:
+        type: "[]*string"
