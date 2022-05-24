@@ -17,6 +17,7 @@ import (
 	// crossplaneAWSIdentityv1alpha1 "github.com/crossplane/provider-aws/apis/identity/v1alpha1"
 	ackIAM "github.com/aws-controllers-k8s/iam-controller/apis/v1alpha1"
 	crossplaneAWSIdentityv1beta1 "github.com/crossplane/provider-aws/apis/iam/v1beta1"
+	kfPodDefault "github.com/kubeflow/kubeflow/components/admission-webhook/pkg/apis/settings/v1alpha1"
 	platformv1alpha1 "github.com/pluralsh/kubeflow-controller/apis/platform/v1alpha1"
 	postgresv1 "github.com/zalando/postgres-operator/pkg/apis/acid.zalan.do/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -763,6 +764,34 @@ func EnvoyFilter(ctx context.Context, r client.Client, envoyFilter *istioNetwork
 		log.Info("Updating Istio EnvoyFilter", "namespace", envoyFilter.Namespace, "name", envoyFilter.Name)
 		if err := r.Update(ctx, foundEnvoyFilter); err != nil {
 			log.Error(err, "Unable to update Istio EnvoyFilter")
+			return err
+		}
+	}
+
+	return nil
+}
+
+// PodDefault reconciles an Kubeflow PodDefault object.
+func PodDefault(ctx context.Context, r client.Client, podDefault *kfPodDefault.PodDefault, log logr.Logger) error {
+	foundPodDefault := &kfPodDefault.PodDefault{}
+	justCreated := false
+	if err := r.Get(ctx, types.NamespacedName{Name: podDefault.Name, Namespace: podDefault.Namespace}, foundPodDefault); err != nil {
+		if apierrs.IsNotFound(err) {
+			log.Info("Creating Kubeflow PodDefault", "namespace", podDefault.Namespace, "name", podDefault.Name)
+			if err = r.Create(ctx, podDefault); err != nil {
+				log.Error(err, "Unable to create Kubeflow PodDefault")
+				return err
+			}
+			justCreated = true
+		} else {
+			log.Error(err, "Error getting Kubeflow PodDefault")
+			return err
+		}
+	}
+	if !justCreated && CopyPodDefault(podDefault, foundPodDefault, log) {
+		log.Info("Updating Kubeflow PodDefault", "namespace", podDefault.Namespace, "name", podDefault.Name)
+		if err := r.Update(ctx, foundPodDefault); err != nil {
+			log.Error(err, "Unable to update Kubeflow PodDefault")
 			return err
 		}
 	}
@@ -2128,6 +2157,47 @@ func CopyEnvoyFilter(from, to *istioNetworkingClientv1alpha3.EnvoyFilter, log lo
 	if !reflect.DeepEqual(to.Spec, from.Spec) {
 		log.V(1).Info("reconciling Istio EnvoyFilter due to Spec change")
 		log.V(2).Info("difference in Istio EnvoyFilter Specs", "wanted", from.Spec, "existing", to.Spec)
+		requireUpdate = true
+	}
+	to.Spec = from.Spec
+
+	return requireUpdate
+}
+
+// CopyPodDefault copies the owned fields from one Kubeflow PodDefault to another
+func CopyPodDefault(from, to *kfPodDefault.PodDefault, log logr.Logger) bool {
+	requireUpdate := false
+	for k, v := range to.Labels {
+		if from.Labels[k] != v {
+			log.V(1).Info("reconciling Kubeflow PodDefault due to label change")
+			log.V(2).Info("difference in Kubeflow PodDefault labels", "wanted", from.Labels, "existing", to.Labels)
+			requireUpdate = true
+		}
+	}
+	if len(to.Labels) == 0 && len(from.Labels) != 0 {
+		log.V(1).Info("reconciling Kubeflow PodDefault due to label change")
+		log.V(2).Info("difference in Kubeflow PodDefault labels", "wanted", from.Labels, "existing", to.Labels)
+		requireUpdate = true
+	}
+	to.Labels = from.Labels
+
+	for k, v := range to.Annotations {
+		if from.Annotations[k] != v {
+			log.V(1).Info("reconciling Kubeflow PodDefault due to annotation change")
+			log.V(2).Info("difference in Kubeflow PodDefault annotations", "wanted", from.Annotations, "existing", to.Annotations)
+			requireUpdate = true
+		}
+	}
+	if len(to.Annotations) == 0 && len(from.Annotations) != 0 {
+		log.V(1).Info("reconciling Kubeflow PodDefault due to annotation change")
+		log.V(2).Info("difference in Kubeflow PodDefault annotations", "wanted", from.Annotations, "existing", to.Annotations)
+		requireUpdate = true
+	}
+	to.Annotations = from.Annotations
+
+	if !reflect.DeepEqual(to.Spec, from.Spec) {
+		log.V(1).Info("reconciling Kubeflow PodDefault due to Spec change")
+		log.V(2).Info("difference in Kubeflow PodDefault Specs", "wanted", from.Spec, "existing", to.Spec)
 		requireUpdate = true
 	}
 	to.Spec = from.Spec

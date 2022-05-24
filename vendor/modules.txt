@@ -172,6 +172,9 @@ github.com/json-iterator/go
 # github.com/kr/text v0.2.0
 ## explicit
 github.com/kr/text
+# github.com/kubeflow/kubeflow/components/admission-webhook v0.0.0-20220513185335-8be0d987f765
+## explicit; go 1.17
+github.com/kubeflow/kubeflow/components/admission-webhook/pkg/apis/settings/v1alpha1
 # github.com/mattn/go-colorable v0.1.8
 ## explicit; go 1.13
 github.com/mattn/go-colorable
@@ -233,7 +236,7 @@ github.com/onsi/gomega/types
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# github.com/pluralsh/controller-reconcile-helper v0.0.0-20220419144026-5538c7b8de01
+# github.com/pluralsh/controller-reconcile-helper v0.0.0-20220524100904-61632865a5a5
 ## explicit; go 1.17
 github.com/pluralsh/controller-reconcile-helper
 # github.com/pluralsh/kubeflow-controller v0.0.0-20211119170150-da85f07f50f4
@@ -533,8 +536,6 @@ istio.io/api/type/v1beta1
 istio.io/client-go/pkg/apis/networking/v1alpha3
 istio.io/client-go/pkg/apis/networking/v1beta1
 istio.io/client-go/pkg/apis/security/v1beta1
-# istio.io/gogo-genproto v0.0.0-20211208193508-5ab4acc9eb1e
-## explicit; go 1.17
 # k8s.io/api v0.23.5
 ## explicit; go 1.16
 k8s.io/api/admission/v1

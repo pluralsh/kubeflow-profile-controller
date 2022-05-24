@@ -35,6 +35,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/goccy/go-yaml"
 	_struct "github.com/golang/protobuf/ptypes/struct"
+	kfPodDefault "github.com/kubeflow/kubeflow/components/admission-webhook/pkg/apis/settings/v1alpha1"
 	reconcilehelper "github.com/pluralsh/controller-reconcile-helper"
 	profilev2alpha1 "github.com/pluralsh/kubeflow-profile-controller/apis/kubeflow.org/v2alpha1"
 	platformv1alpha1 "github.com/pluralsh/kubeflow-profile-controller/apis/platform/v1alpha1"
@@ -502,7 +503,18 @@ func (r *ProfileReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return ctrl.Result{}, err
 	}
 	if err := reconcilehelper.EnvoyFilter(ctx, r.Client, envoyFilter, logger); err != nil {
-		logger.Error(err, "Error reconciling Istio EnvoyFilter", "namespace", peerAutehntication.Namespace)
+		logger.Error(err, "Error reconciling Istio EnvoyFilter", "namespace", envoyFilter.Namespace)
+		return ctrl.Result{}, err
+	}
+
+	// Create PodDefault for KFP access
+	podDefault := r.generatePodDefault(instance)
+	if err := ctrl.SetControllerReference(instance, podDefault, r.Scheme); err != nil {
+		logger.Error(err, "Error setting ControllerReference for KFP PodDefault")
+		return ctrl.Result{}, err
+	}
+	if err := reconcilehelper.PodDefault(ctx, r.Client, podDefault, logger); err != nil {
+		logger.Error(err, "Error reconciling KFP PodDefault", "namespace", podDefault.Namespace)
 		return ctrl.Result{}, err
 	}
 
@@ -1520,4 +1532,56 @@ func (r *ProfileReconciler) generateKFPIAMRoleACK(profileIns *profilev2alpha1.Pr
 	}
 
 	return iamRole
+}
+
+func (r *ProfileReconciler) generatePodDefault(profileIns *profilev2alpha1.Profile) *kfPodDefault.PodDefault {
+
+	expirationSeconds := int64(7200)
+
+	podDefault := &kfPodDefault.PodDefault{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "access-ml-pipeline",
+			Namespace: profileIns.Name,
+		},
+		Spec: kfPodDefault.PodDefaultSpec{
+			Desc: "Allow access to Kubeflow Pipelines",
+			Env: []corev1.EnvVar{
+				{
+					Name:  "KF_PIPELINES_SA_TOKEN_PATH",
+					Value: "/var/run/secrets/kubeflow/pipelines/token",
+				},
+			},
+			Selector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"access-ml-pipeline": "true",
+				},
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "volume-kf-pipeline-token",
+					MountPath: "/var/run/secrets/kubeflow/pipelines",
+					ReadOnly:  true,
+				},
+			},
+			Volumes: []corev1.Volume{
+				{
+					Name: "volume-kf-pipeline-token",
+					VolumeSource: corev1.VolumeSource{
+						Projected: &corev1.ProjectedVolumeSource{
+							Sources: []corev1.VolumeProjection{
+								{
+									ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+										Audience:          "pipelines.kubeflow.org",
+										ExpirationSeconds: &expirationSeconds,
+										Path:              "token",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	return podDefault
 }

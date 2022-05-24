@@ -11,7 +11,7 @@ require (
 	github.com/goccy/go-yaml v1.9.4
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
-	github.com/pluralsh/controller-reconcile-helper v0.0.0-20220419144026-5538c7b8de01
+	github.com/pluralsh/controller-reconcile-helper v0.0.0-20220524100904-61632865a5a5
 	github.com/prometheus/client_golang v1.12.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
@@ -29,6 +29,7 @@ require (
 
 require (
 	github.com/golang/protobuf v1.5.2
+	github.com/kubeflow/kubeflow/components/admission-webhook v0.0.0-20220513185335-8be0d987f765
 	google.golang.org/protobuf v1.28.0
 )
 
@@ -99,7 +100,6 @@ require (
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
-	istio.io/gogo-genproto v0.0.0-20211208193508-5ab4acc9eb1e // indirect
 	k8s.io/apiextensions-apiserver v0.23.5 // indirect
 	k8s.io/component-base v0.23.5 // indirect
 	k8s.io/klog/v2 v2.30.0 // indirect

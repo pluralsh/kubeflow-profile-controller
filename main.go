@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	kfPodDefault "github.com/kubeflow/kubeflow/components/admission-webhook/pkg/apis/settings/v1alpha1"
 	kubefloworgv1 "github.com/pluralsh/kubeflow-profile-controller/apis/kubeflow.org/v1"
 	kubefloworgv1beta1 "github.com/pluralsh/kubeflow-profile-controller/apis/kubeflow.org/v1beta1"
 	kubefloworgv2alpha1 "github.com/pluralsh/kubeflow-profile-controller/apis/kubeflow.org/v2alpha1"
@@ -68,6 +69,7 @@ func init() {
 	utilruntime.Must(ackIAM.AddToScheme(scheme))
 	utilruntime.Must(kubefloworgv2alpha1.AddToScheme(scheme))
 	utilruntime.Must(platformv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kfPodDefault.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
