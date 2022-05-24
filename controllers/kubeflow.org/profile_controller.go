@@ -32,6 +32,10 @@ import (
 
 	ackIAM "github.com/aws-controllers-k8s/iam-controller/apis/v1alpha1"
 
+	gcpIAM "github.com/GoogleCloudPlatform/k8s-config-connector/pkg/clients/generated/apis/iam/v1beta1"
+	gcpCCk8sv1alpha1 "github.com/GoogleCloudPlatform/k8s-config-connector/pkg/clients/generated/apis/k8s/v1alpha1"
+	gcpStorage "github.com/GoogleCloudPlatform/k8s-config-connector/pkg/clients/generated/apis/storage/v1beta1"
+
 	"github.com/go-logr/logr"
 	"github.com/goccy/go-yaml"
 	_struct "github.com/golang/protobuf/ptypes/struct"
@@ -1219,7 +1223,7 @@ func (r *ProfileReconciler) generateKFPDeployments(profileIns *profilev2alpha1.P
 							Containers: []corev1.Container{
 								{
 									Name:            "ml-pipeline-visualizationserver",
-									Image:           "gcr.io/ml-pipeline/visualization-server:1.7.1",
+									Image:           "gcr.io/ml-pipeline/visualization-server:1.8.1",
 									ImagePullPolicy: corev1.PullIfNotPresent,
 									Ports: []corev1.ContainerPort{
 										{
@@ -1265,7 +1269,7 @@ func (r *ProfileReconciler) generateKFPDeployments(profileIns *profilev2alpha1.P
 							Containers: []corev1.Container{
 								{
 									Name:            "ml-pipeline-ui-artifact",
-									Image:           "gcr.io/ml-pipeline/frontend:1.7.1",
+									Image:           "gcr.io/ml-pipeline/frontend:1.8.1",
 									ImagePullPolicy: corev1.PullIfNotPresent,
 									Ports: []corev1.ContainerPort{
 										{
@@ -1333,6 +1337,7 @@ func (r *ProfileReconciler) generateKFPAuthorizationPolicy(profileIns *profilev2
 					From: []*istioSecurity.Rule_From{
 						{
 							Source: &istioSecurity.Source{
+								//TODO: fix this sa name
 								Principals: []string{"cluster.local/ns/kubeflow/sa/ml-pipeline"},
 							},
 						},
@@ -1520,4 +1525,93 @@ func (r *ProfileReconciler) generateKFPIAMRoleACK(profileIns *profilev2alpha1.Pr
 	}
 
 	return iamRole
+}
+
+func (r *ProfileReconciler) generateKFPIAMServiceAccountGCP(profileIns *profilev2alpha1.Profile, awsAccountID string, clusterName string, pipelineBucket string) *gcpIAM.IAMServiceAccount {
+
+	saName := fmt.Sprintf("%s-kubeflow-assumable-sa-ns-%s", clusterName, profileIns.Name)
+
+	description := "sa for kubeflow namespace GCS access"
+
+	iamSA := &gcpIAM.IAMServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      saName,
+			Namespace: profileIns.Name,
+		},
+		Spec: gcpIAM.IAMServiceAccountSpec{
+			Description: &description,
+		},
+	}
+	return iamSA
+}
+
+func (r *ProfileReconciler) generateKFPIAMPolicyWorkloadIdentityGCP(profileIns *profilev2alpha1.Profile, gcpAccountID string, clusterName string, pipelineBucket string) *gcpIAM.IAMPolicy {
+
+	saName := fmt.Sprintf("%s-kubeflow-assumable-sa-ns-%s", clusterName, profileIns.Name)
+
+	policyName := fmt.Sprintf("%s-kubeflow-worload-id-iam-policy-ns-%s", clusterName, profileIns.Name)
+
+	member := fmt.Sprintf("serviceAccount:%s.svc.id.goog[%s/%s]", gcpAccountID, profileIns.Name, saName)
+
+	iamPolicy := &gcpIAM.IAMPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      policyName,
+			Namespace: profileIns.Name,
+		},
+		Spec: gcpIAM.IAMPolicySpec{
+			ResourceRef: gcpCCk8sv1alpha1.IAMResourceRef{
+				APIVersion: gcpIAM.IAMServiceAccountGVK.Version,
+				Kind:       gcpIAM.IAMServiceAccountGVK.Kind,
+				Name:       saName,
+				Namespace:  profileIns.Name,
+			},
+			Bindings: []gcpIAM.PolicyBindings{
+				{
+					Role: "roles/iam.workloadIdentityUser",
+					Members: []string{
+						member,
+					},
+				},
+			},
+		},
+	}
+	return iamPolicy
+}
+
+func (r *ProfileReconciler) generateKFPIAMPolicyMemberGCP(profileIns *profilev2alpha1.Profile, awsAccountID string, clusterName string, pipelineBucket string) *gcpIAM.IAMPolicyMember {
+
+	description := "policy for kubeflow namespace GCS access"
+
+	saName := fmt.Sprintf("%s-kubeflow-assumable-sa-ns-%s", clusterName, profileIns.Name)
+
+	policyName := fmt.Sprintf("%s-kubeflow-gcs-iam-policy-ns-%s", clusterName, profileIns.Name)
+
+	expression := fmt.Sprintf("resource.name.startsWith('projects/_/buckets/%s/objects/pipelines/%s')", pipelineBucket, profileIns.Name)
+
+	iamPolicy := &gcpIAM.IAMPolicyMember{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      policyName,
+			Namespace: profileIns.Name,
+		},
+		Spec: gcpIAM.IAMPolicyMemberSpec{
+			MemberFrom: &gcpIAM.PolicymemberMemberFrom{
+				ServiceAccountRef: &gcpCCk8sv1alpha1.IAMResourceRef{
+					Name:      saName,
+					Namespace: profileIns.Name,
+				},
+			},
+			ResourceRef: gcpCCk8sv1alpha1.IAMResourceRef{
+				APIVersion: gcpStorage.StorageBucketGVK.Version,
+				Kind:       gcpStorage.StorageBucketGVK.Kind,
+				External:   pipelineBucket,
+			},
+			Role: "roles/storage.admin",
+			Condition: &gcpIAM.PolicymemberCondition{
+				Description: &description,
+				Expression:  expression,
+				Title:       policyName,
+			},
+		},
+	}
+	return iamPolicy
 }

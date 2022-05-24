@@ -20,6 +20,11 @@ github.com/Azure/go-autorest/logger
 # github.com/Azure/go-autorest/tracing v0.6.0
 ## explicit; go 1.12
 github.com/Azure/go-autorest/tracing
+# github.com/GoogleCloudPlatform/k8s-config-connector v1.82.0
+## explicit; go 1.15
+github.com/GoogleCloudPlatform/k8s-config-connector/pkg/clients/generated/apis/iam/v1beta1
+github.com/GoogleCloudPlatform/k8s-config-connector/pkg/clients/generated/apis/k8s/v1alpha1
+github.com/GoogleCloudPlatform/k8s-config-connector/pkg/clients/generated/apis/storage/v1beta1
 # github.com/aws-controllers-k8s/iam-controller v0.0.6
 ## explicit; go 1.17
 github.com/aws-controllers-k8s/iam-controller/apis/v1alpha1
