@@ -26,7 +26,7 @@ github.com/aws-controllers-k8s/iam-controller/apis/v1alpha1
 # github.com/aws-controllers-k8s/runtime v0.17.0
 ## explicit; go 1.17
 github.com/aws-controllers-k8s/runtime/apis/core/v1alpha1
-# github.com/aws/aws-sdk-go v1.42.0
+# github.com/aws/aws-sdk-go v1.42.53
 ## explicit; go 1.11
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/awserr
