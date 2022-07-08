@@ -8,7 +8,7 @@ require (
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	// github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-logr/logr v1.2.0
-	github.com/goccy/go-yaml v1.9.4
+	github.com/goccy/go-yaml v1.9.5
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
 	github.com/pluralsh/controller-reconcile-helper v0.0.0-20220524100904-61632865a5a5

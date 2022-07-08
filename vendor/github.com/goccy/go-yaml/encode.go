@@ -31,6 +31,7 @@ type Encoder struct {
 	opts                       []EncodeOption
 	indent                     int
 	indentSequence             bool
+	singleQuote                bool
 	isFlowStyle                bool
 	isJSONStyle                bool
 	useJSONMarshaler           bool
@@ -412,7 +413,11 @@ func (e *Encoder) isNeedQuoted(v string) bool {
 
 func (e *Encoder) encodeString(v string, column int) ast.Node {
 	if e.isNeedQuoted(v) {
-		v = strconv.Quote(v)
+		if e.singleQuote {
+			v = quoteWith(v, '\'')
+		} else {
+			v = strconv.Quote(v)
+		}
 	}
 	return ast.String(token.New(v, v, e.pos(column)))
 }
@@ -505,8 +510,8 @@ func (e *Encoder) encodeMap(ctx context.Context, value reflect.Value, column int
 		if err != nil {
 			return nil
 		}
-		if m, ok := value.(*ast.MappingNode); ok {
-			m.AddColumn(e.indent)
+		if value.Type() == ast.MappingType || value.Type() == ast.MappingValueType {
+			value.AddColumn(e.indent)
 		}
 		node.Values = append(node.Values, ast.MappingValue(
 			nil,
