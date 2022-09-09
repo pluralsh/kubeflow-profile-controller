@@ -1091,6 +1091,11 @@ func (r *ProfileReconciler) generatePeerAuthentication(profileIns *profilev2alph
 
 func (r *ProfileReconciler) generateEnvoyFilter(profileIns *profilev2alpha1.Profile) *istioNetworkingClientv1alpha3.EnvoyFilter {
 
+	luaString := fmt.Sprintf(`function envoy_on_request(request_handle)
+  headers = request_handle:headers()
+  request_handle:headers():replace("kubeflow-request-source-namespace", "%s")
+end`, profileIns.Name)
+
 	envoyfilter := &istioNetworkingClientv1alpha3.EnvoyFilter{
 
 		ObjectMeta: metav1.ObjectMeta{
@@ -1137,10 +1142,7 @@ func (r *ProfileReconciler) generateEnvoyFilter(profileIns *profilev2alpha1.Prof
 												},
 												"inline_code": {
 													Kind: &structpb.Value_StringValue{
-														StringValue: `function envoy_on_request(request_handle)
-  headers = request_handle:headers()
-  request_handle:headers():replace("kubeflow-request-source-namespace", "david")
-end`,
+														StringValue: luaString,
 													},
 												},
 											},
