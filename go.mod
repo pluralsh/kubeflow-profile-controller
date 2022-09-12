@@ -3,8 +3,8 @@ module github.com/pluralsh/kubeflow-profile-controller
 go 1.17
 
 require (
-	github.com/aws-controllers-k8s/iam-controller v0.0.6
-	github.com/aws/aws-sdk-go v1.42.0
+	github.com/aws-controllers-k8s/iam-controller v0.0.21
+	github.com/aws/aws-sdk-go v1.44.93
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	// github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-logr/logr v1.2.0
@@ -41,7 +41,7 @@ require (
 	github.com/Azure/go-autorest/autorest/date v0.3.0 // indirect
 	github.com/Azure/go-autorest/logger v0.2.1 // indirect
 	github.com/Azure/go-autorest/tracing v0.6.0 // indirect
-	github.com/aws-controllers-k8s/runtime v0.17.0 // indirect
+	github.com/aws-controllers-k8s/runtime v0.20.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/crossplane/crossplane-runtime v0.15.1-0.20210930095326-d5661210733b // indirect
