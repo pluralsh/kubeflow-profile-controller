@@ -20,9 +20,9 @@ require (
 	google.golang.org/api v0.69.0
 	istio.io/api v0.0.0-20220418200313-202d5d40987b
 	istio.io/client-go v1.13.3
-	k8s.io/api v0.23.5
-	k8s.io/apimachinery v0.23.5
-	k8s.io/client-go v0.23.5
+	k8s.io/api v0.23.13
+	k8s.io/apimachinery v0.23.13
+	k8s.io/client-go v0.23.13
 	sigs.k8s.io/controller-runtime v0.11.2
 	sigs.k8s.io/yaml v1.3.0
 )
