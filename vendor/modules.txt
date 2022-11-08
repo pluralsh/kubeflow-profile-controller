@@ -172,7 +172,7 @@ github.com/json-iterator/go
 # github.com/kr/text v0.2.0
 ## explicit
 github.com/kr/text
-# github.com/kubeflow/kubeflow/components/admission-webhook v0.0.0-20220513185335-8be0d987f765
+# github.com/kubeflow/kubeflow/components/admission-webhook v0.0.0-20221108153640-925385ef04eb
 ## explicit; go 1.17
 github.com/kubeflow/kubeflow/components/admission-webhook/pkg/apis/settings/v1alpha1
 # github.com/mattn/go-colorable v0.1.8
