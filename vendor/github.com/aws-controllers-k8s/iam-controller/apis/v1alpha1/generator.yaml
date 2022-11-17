@@ -2,19 +2,68 @@ ignore:
   resource_names:
    - AccessKey
    - AccountAlias
-   - Group
+   #- Group
    - InstanceProfile
    - LoginProfile
-   - OpenIDConnectProvider
+   #- OpenIDConnectProvider
    #- Policy
    - PolicyVersion
    #- Role
    - SAMLProvider
    - ServiceLinkedRole
    - ServiceSpecificCredential
-   - User
+   #- User
    - VirtualMFADevice
+operations:
+  GetGroup:
+    # This is necessary because the GetGroupOutput shape has both a Group and a
+    # Users field and we want to grab the Group information from the output
+    # shape...
+    output_wrapper_field_path: Group
 resources:
+  Group:
+    hooks:
+      sdk_read_one_post_set_output:
+        template_path: hooks/group/sdk_read_one_post_set_output.go.tpl
+      sdk_create_post_set_output:
+        template_path: hooks/group/sdk_create_post_set_output.go.tpl
+      sdk_update_pre_build_request:
+        template_path: hooks/group/sdk_update_pre_build_request.go.tpl
+      sdk_update_post_build_request:
+        template_path: hooks/group/sdk_update_post_build_request.go.tpl
+      sdk_delete_pre_build_request:
+        template_path: hooks/group/sdk_delete_pre_build_request.go.tpl
+    exceptions:
+      terminal_codes:
+        - InvalidInput
+        - MalformedPolicyDocument
+    renames:
+      operations:
+        CreateGroup:
+          input_fields:
+            GroupName: Name
+        GetGroup:
+          input_fields:
+            GroupName: Name
+        UpdateGroup:
+          input_fields:
+            GroupName: Name
+        DeleteGroup:
+          input_fields:
+            GroupName: Name
+    fields:
+      Path:
+        late_initialize: {}
+      # In order to support attaching zero or more policies to a role, we use
+      # custom update code path code that uses the Attach/DetachGroupPolicy API
+      # calls to manage the set of PolicyARNs attached to this Group.
+      Policies:
+        type: "[]*string"
+        references:
+          resource: Policy
+          path: Status.ACKResourceMetadata.ARN
+    tags:
+      ignore: true
   Policy:
     renames:
       operations:
@@ -28,10 +77,12 @@ resources:
           input_fields:
             PolicyName: Name
     hooks:
+      delta_pre_compare:
+        code: compareTags(delta, a, b)
       sdk_read_one_post_set_output:
         template_path: hooks/policy/sdk_read_one_post_set_output.go.tpl
-      sdk_create_post_set_output:
-        template_path: hooks/policy/sdk_create_post_set_output.go.tpl
+      sdk_delete_pre_build_request:
+        template_path: hooks/policy/sdk_delete_pre_build_request.go.tpl
     update_operation:
       # There is no `UpdatePolicy` API operation. The only way to update a 
       # policy is to update the properties individually (only a few properties
@@ -65,14 +116,19 @@ resources:
         late_initialize: {}
       Path:
         late_initialize: {}
+      Tags:
+        compare:
+          is_ignored: true
   Role:
     hooks:
+      delta_pre_compare:
+        code: compareTags(delta, a, b)
       sdk_read_one_post_set_output:
         template_path: hooks/role/sdk_read_one_post_set_output.go.tpl
       sdk_create_post_set_output:
         template_path: hooks/role/sdk_create_post_set_output.go.tpl
-      sdk_update_post_set_output:
-        template_path: hooks/role/sdk_update_post_set_output.go.tpl
+      sdk_update_pre_build_request:
+        template_path: hooks/role/sdk_update_pre_build_request.go.tpl
       sdk_delete_pre_build_request:
         template_path: hooks/role/sdk_delete_pre_build_request.go.tpl
     exceptions:
@@ -97,6 +153,9 @@ resources:
       MaxSessionDuration:
         late_initialize: {}
       PermissionsBoundary:
+        references:
+          resource: Policy
+          path: Status.ACKResourceMetadata.ARN
         set:
           # The input and output shapes are different...
           - from: PermissionsBoundary.PermissionsBoundaryArn
@@ -107,3 +166,91 @@ resources:
       # calls to manage the set of PolicyARNs attached to this Role.
       Policies:
         type: "[]*string"
+        references:
+          resource: Policy
+          path: Status.ACKResourceMetadata.ARN
+      Tags:
+        compare:
+          is_ignored: true
+  OpenIDConnectProvider:
+    hooks:
+      delta_pre_compare:
+        code: customPreCompare(delta, a, b)
+      sdk_read_one_post_set_output:
+        template_path: hooks/open_id_connect_provider/sdk_read_one_post_set_output.go.tpl
+    exceptions:
+      terminal_codes:
+        - InvalidInput 
+        - EntityAlreadyExists
+    renames:
+      operations:
+        CreateOpenIDConnectProvider:
+          input_fields:
+            ClientIDList: ClientIDs
+            ThumbprintList: Thumbprints
+        GetOpenIDConnectProvider:
+          output_fields:
+            ClientIDList: ClientIDs
+            ThumbprintList: Thumbprints
+    fields:
+      URL:
+        is_immutable: true
+        compare:
+          is_ignored: true
+      Tags:
+        compare:
+          is_ignored: true
+    update_operation:
+      custom_method_name: customUpdateOpenIDConnectProvider
+  User:
+    hooks:
+      delta_pre_compare:
+        code: compareTags(delta, a, b)
+      sdk_read_one_post_set_output:
+        template_path: hooks/user/sdk_read_one_post_set_output.go.tpl
+      sdk_create_post_set_output:
+        template_path: hooks/user/sdk_create_post_set_output.go.tpl
+      sdk_update_pre_build_request:
+        template_path: hooks/user/sdk_update_pre_build_request.go.tpl
+      sdk_update_post_build_request:
+        template_path: hooks/user/sdk_update_post_build_request.go.tpl
+      sdk_delete_pre_build_request:
+        template_path: hooks/user/sdk_delete_pre_build_request.go.tpl
+    exceptions:
+      terminal_codes:
+        - InvalidInput
+    renames:
+      operations:
+        CreateUser:
+          input_fields:
+            UserName: Name
+        GetUser:
+          input_fields:
+            UserName: Name
+        UpdateUser:
+          input_fields:
+            UserName: Name
+        DeleteUser:
+          input_fields:
+            UserName: Name
+    fields:
+      Path:
+        late_initialize: {}
+      PermissionsBoundary:
+        references:
+          resource: Policy
+          path: Status.ACKResourceMetadata.ARN
+        set:
+          # The input and output shapes are different...
+          - from: PermissionsBoundary.PermissionsBoundaryArn
+      # In order to support attaching zero or more policies to a user, we use
+      # custom update code path code that uses the Attach/DetachUserPolicy API
+      # calls to manage the set of PolicyARNs attached to this User.
+      Policies:
+        type: "[]*string"
+        references:
+          resource: Policy
+          path: Status.ACKResourceMetadata.ARN
+      Tags:
+        compare:
+          is_ignored: true

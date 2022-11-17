@@ -51,8 +51,8 @@ type RoleSpec struct {
 	// A description of the role.
 	Description *string `json:"description,omitempty"`
 	// The maximum session duration (in seconds) that you want to set for the specified
-	// role. If you do not specify a value for this setting, the default maximum
-	// of one hour is applied. This setting can have a value from 1 hour to 12 hours.
+	// role. If you do not specify a value for this setting, the default value of
+	// one hour is applied. This setting can have a value from 1 hour to 12 hours.
 	//
 	// Anyone who assumes the role from the or API can use the DurationSeconds API
 	// parameter or the duration-seconds CLI parameter to request a longer session.
@@ -88,9 +88,11 @@ type RoleSpec struct {
 	Path *string `json:"path,omitempty"`
 	// The ARN of the policy that is used to set the permissions boundary for the
 	// role.
-	PermissionsBoundary *string `json:"permissionsBoundary,omitempty"`
+	PermissionsBoundary    *string                                  `json:"permissionsBoundary,omitempty"`
+	PermissionsBoundaryRef *ackv1alpha1.AWSResourceReferenceWrapper `json:"permissionsBoundaryRef,omitempty"`
 
-	Policies []*string `json:"policies,omitempty"`
+	Policies   []*string                                  `json:"policies,omitempty"`
+	PolicyRefs []*ackv1alpha1.AWSResourceReferenceWrapper `json:"policyRefs,omitempty"`
 	// A list of tags that you want to attach to the new role. Each tag consists
 	// of a key name and an associated value. For more information about tagging,
 	// see Tagging IAM resources (https://docs.aws.amazon.com/IAM/latest/UserGuide/id_tags.html)
