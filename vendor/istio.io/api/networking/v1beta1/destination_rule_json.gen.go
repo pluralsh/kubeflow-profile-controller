@@ -39,6 +39,17 @@ func (this *TrafficPolicy_PortTrafficPolicy) UnmarshalJSON(b []byte) error {
 	return DestinationRuleUnmarshaler.Unmarshal(bytes.NewReader(b), this)
 }
 
+// MarshalJSON is a custom marshaler for TrafficPolicy_TunnelSettings
+func (this *TrafficPolicy_TunnelSettings) MarshalJSON() ([]byte, error) {
+	str, err := DestinationRuleMarshaler.MarshalToString(this)
+	return []byte(str), err
+}
+
+// UnmarshalJSON is a custom unmarshaler for TrafficPolicy_TunnelSettings
+func (this *TrafficPolicy_TunnelSettings) UnmarshalJSON(b []byte) error {
+	return DestinationRuleUnmarshaler.Unmarshal(bytes.NewReader(b), this)
+}
+
 // MarshalJSON is a custom marshaler for Subset
 func (this *Subset) MarshalJSON() ([]byte, error) {
 	str, err := DestinationRuleMarshaler.MarshalToString(this)
@@ -69,6 +80,28 @@ func (this *LoadBalancerSettings_ConsistentHashLB) MarshalJSON() ([]byte, error)
 
 // UnmarshalJSON is a custom unmarshaler for LoadBalancerSettings_ConsistentHashLB
 func (this *LoadBalancerSettings_ConsistentHashLB) UnmarshalJSON(b []byte) error {
+	return DestinationRuleUnmarshaler.Unmarshal(bytes.NewReader(b), this)
+}
+
+// MarshalJSON is a custom marshaler for LoadBalancerSettings_ConsistentHashLB_RingHash
+func (this *LoadBalancerSettings_ConsistentHashLB_RingHash) MarshalJSON() ([]byte, error) {
+	str, err := DestinationRuleMarshaler.MarshalToString(this)
+	return []byte(str), err
+}
+
+// UnmarshalJSON is a custom unmarshaler for LoadBalancerSettings_ConsistentHashLB_RingHash
+func (this *LoadBalancerSettings_ConsistentHashLB_RingHash) UnmarshalJSON(b []byte) error {
+	return DestinationRuleUnmarshaler.Unmarshal(bytes.NewReader(b), this)
+}
+
+// MarshalJSON is a custom marshaler for LoadBalancerSettings_ConsistentHashLB_MagLev
+func (this *LoadBalancerSettings_ConsistentHashLB_MagLev) MarshalJSON() ([]byte, error) {
+	str, err := DestinationRuleMarshaler.MarshalToString(this)
+	return []byte(str), err
+}
+
+// UnmarshalJSON is a custom unmarshaler for LoadBalancerSettings_ConsistentHashLB_MagLev
+func (this *LoadBalancerSettings_ConsistentHashLB_MagLev) UnmarshalJSON(b []byte) error {
 	return DestinationRuleUnmarshaler.Unmarshal(bytes.NewReader(b), this)
 }
 
