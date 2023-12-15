@@ -1,0 +1,45 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  annotations:
+    role: admin
+    user: test-email
+  name: ns-owner-access-istio-test
+spec:
+  rules:
+    - from:
+        - source:
+            requestPrincipals:
+              - https://oidc.plural.sh//*
+      when:
+        - key: request.auth.claims[email]
+          values:
+            - test-email
+    - when:
+        - key: source.namespace
+          values:
+            - test-ns
+    - from:
+        - source:
+            namespaces:
+              - kubeflow
+    - to:
+        - operation:
+            paths:
+              - /healthz
+              - /metrics
+              - /ready
+              - /wait-for-drain
+      when:
+        - key: source.namespace
+          values:
+            - knative
+    - to:
+        - operation:
+            paths:
+              - /v1/models/*
+              - /v2/models/*
+      when:
+        - key: request.headers[kubeflow-request-source-namespace]
+          values:
+            - test-ns

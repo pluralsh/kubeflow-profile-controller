@@ -25,9 +25,11 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	ackIAM "github.com/aws-controllers-k8s/iam-controller/apis/v1alpha1"
+	"github.com/go-logr/logr"
 	istioNetworkingClientv1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
 	istioNetworkingClient "istio.io/client-go/pkg/apis/networking/v1beta1"
 	istioSecurityClient "istio.io/client-go/pkg/apis/security/v1beta1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -41,6 +43,9 @@ import (
 	kubefloworgv2alpha1 "github.com/pluralsh/kubeflow-profile-controller/apis/kubeflow.org/v2alpha1"
 	platformv1alpha1 "github.com/pluralsh/kubeflow-profile-controller/apis/platform/v1alpha1"
 	controllers "github.com/pluralsh/kubeflow-profile-controller/controllers/kubeflow.org"
+
+	"github.com/argoproj/gitops-engine/pkg/cache"
+	"github.com/argoproj/gitops-engine/pkg/engine"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -73,6 +78,14 @@ func init() {
 	//+kubebuilder:scaffold:scheme
 }
 
+// checkError is a convenience function to check if an error is non-nil and exit if it was
+func checkError(err error, log logr.Logger) {
+	if err != nil {
+		log.Error(err, "Fatal error")
+		os.Exit(1)
+	}
+}
+
 func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -90,6 +103,63 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	var namespaces []string
+
+	config := ctrl.GetConfigOrDie()
+
+	log := ctrl.Log.WithName("controllers").WithName("Profile")
+
+	clusterCache := cache.NewClusterCache(config,
+		cache.SetNamespaces(namespaces),
+		cache.SetLogr(log),
+		cache.SetPopulateResourceInfoHandler(func(un *unstructured.Unstructured, isRoot bool) (info interface{}, cacheManifest bool) {
+			// store gc mark of every resource
+			id := un.GetAnnotations()[controllers.AnnotationId]
+			gcMark := un.GetAnnotations()[controllers.AnnotationGCMark]
+			info = &controllers.ResourceInfo{GcMark: gcMark, Id: id}
+			// cache resources that has that mark to improve performance
+			cacheManifest = id != ""
+			return
+		}),
+	)
+	gitOpsEngine := engine.NewEngine(config, clusterCache, engine.WithLogr(log))
+
+	cleanup, err := gitOpsEngine.Run()
+	checkError(err, log)
+	defer cleanup()
+
+	// resync := make(chan bool)
+	// go func() {
+	// 	ticker := time.NewTicker(time.Second * time.Duration(300)) // TODO: if used, make this configurable
+	// 	for {
+	// 		<-ticker.C
+	// 		log.Info("Synchronization triggered by timer")
+	// 		resync <- true
+	// 	}
+	// }()
+
+	// for ; true; <-resync {
+	// 	target, revision, err := s.parseManifests()
+	// 	if err != nil {
+	// 		log.Error(err, "Failed to parse target state")
+	// 		continue
+	// 	}
+
+	// 	result, err := gitOpsEngine.Sync(context.Background(), target, func(r *cache.Resource) bool {
+	// 		return r.Info.(*resourceInfo).gcMark == s.getGCMark(r.ResourceKey())
+	// 	}, revision, namespace, sync.WithPrune(prune), sync.WithLogr(log))
+	// 	if err != nil {
+	// 		log.Error(err, "Failed to synchronize cluster state")
+	// 		continue
+	// 	}
+	// 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	// 	_, _ = fmt.Fprintf(w, "RESOURCE\tRESULT\n")
+	// 	for _, res := range result {
+	// 		_, _ = fmt.Fprintf(w, "%s\t%s\n", res.ResourceKey.String(), res.Message)
+	// 	}
+	// 	_ = w.Flush()
+	// }
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -109,6 +179,7 @@ func main() {
 		Scheme:           mgr.GetScheme(),
 		Log:              ctrl.Log.WithName("controllers").WithName("Profile"),
 		WorkloadIdentity: workloadIdentity,
+		Engine:           gitOpsEngine,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Profile")
 		os.Exit(1)
