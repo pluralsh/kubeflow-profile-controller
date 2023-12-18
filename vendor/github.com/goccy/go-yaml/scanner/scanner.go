@@ -61,13 +61,25 @@ func (s *Scanner) bufferedToken(ctx *Context) *token.Token {
 		s.savedPos = nil
 		return tk
 	}
-	size := len(ctx.buf)
+	line := s.line
+	column := s.column - len(ctx.buf)
+	level := s.indentLevel
+	if ctx.isSaveIndentMode() {
+		line -= s.newLineCount(ctx.buf)
+		column = strings.Index(string(ctx.obuf), string(ctx.buf)) + 1
+		// Since we are in a literal, folded or raw folded
+		// we can use the indent level from the last token.
+		last := ctx.lastToken()
+		if last != nil { // The last token should never be nil here.
+			level = last.Position.IndentLevel + 1
+		}
+	}
 	return ctx.bufferedToken(&token.Position{
-		Line:        s.line,
-		Column:      s.column - size,
-		Offset:      s.offset - size,
+		Line:        line,
+		Column:      column,
+		Offset:      s.offset - len(ctx.buf),
 		IndentNum:   s.indentNum,
-		IndentLevel: s.indentLevel,
+		IndentLevel: level,
 	})
 }
 
@@ -128,6 +140,45 @@ func (s *Scanner) newLineCount(src []rune) int {
 	return cnt
 }
 
+func (s *Scanner) updateIndentState(ctx *Context) {
+	indentNumBasedIndentState := s.indentState
+	if s.prevIndentNum < s.indentNum {
+		s.indentLevel = s.prevIndentLevel + 1
+		indentNumBasedIndentState = IndentStateUp
+	} else if s.prevIndentNum == s.indentNum {
+		s.indentLevel = s.prevIndentLevel
+		indentNumBasedIndentState = IndentStateEqual
+	} else {
+		indentNumBasedIndentState = IndentStateDown
+		if s.prevIndentLevel > 0 {
+			s.indentLevel = s.prevIndentLevel - 1
+		}
+	}
+
+	if s.prevIndentColumn > 0 {
+		if s.prevIndentColumn < s.column {
+			s.indentState = IndentStateUp
+		} else if s.prevIndentColumn != s.column || indentNumBasedIndentState != IndentStateEqual {
+			// The following case ( current position is 'd' ), some variables becomes like here
+			// - prevIndentColumn: 1 of 'a'
+			// - indentNumBasedIndentState: IndentStateDown because d's indentNum(1) is less than c's indentNum(3).
+			// Therefore, s.prevIndentColumn(1) == s.column(1) is true, but we want to treat this as IndentStateDown.
+			// So, we look also current indentState value by the above prevIndentNum based logic, and determins finally indentState.
+			// ---
+			// a:
+			//   b
+			//   c
+			// d: e
+			// ^
+			s.indentState = IndentStateDown
+		} else {
+			s.indentState = IndentStateEqual
+		}
+	} else {
+		s.indentState = indentNumBasedIndentState
+	}
+}
+
 func (s *Scanner) updateIndent(ctx *Context, c rune) {
 	if s.isFirstCharAtLine && s.isNewLineChar(c) && ctx.isDocument() {
 		return
@@ -140,35 +191,15 @@ func (s *Scanner) updateIndent(ctx *Context, c rune) {
 		s.indentState = IndentStateKeep
 		return
 	}
-
-	if s.prevIndentNum < s.indentNum {
-		s.indentLevel = s.prevIndentLevel + 1
-		s.indentState = IndentStateUp
-	} else if s.prevIndentNum == s.indentNum {
-		s.indentLevel = s.prevIndentLevel
-		s.indentState = IndentStateEqual
-	} else {
-		s.indentState = IndentStateDown
-		if s.prevIndentLevel > 0 {
-			s.indentLevel = s.prevIndentLevel - 1
-		}
-	}
-
-	if s.prevIndentColumn > 0 {
-		if s.prevIndentColumn < s.column {
-			s.indentState = IndentStateUp
-		} else if s.prevIndentColumn == s.column {
-			s.indentState = IndentStateEqual
-		} else {
-			s.indentState = IndentStateDown
-		}
-	}
+	s.updateIndentState(ctx)
 	s.isFirstCharAtLine = false
 	if s.isNeededKeepPreviousIndentNum(ctx, c) {
 		return
 	}
+	if s.indentState != IndentStateUp {
+		s.prevIndentColumn = 0
+	}
 	s.prevIndentNum = s.indentNum
-	s.prevIndentColumn = 0
 	s.prevIndentLevel = s.indentLevel
 }
 
@@ -714,6 +745,12 @@ func (s *Scanner) scan(ctx *Context) (pos int) {
 				if tk != nil {
 					s.prevIndentColumn = tk.Position.Column
 					ctx.addToken(tk)
+				} else if tk := ctx.lastToken(); tk != nil {
+					// If the map key is quote, the buffer does not exist because it has already been cut into tokens.
+					// Therefore, we need to check the last token.
+					if tk.Indicator == token.QuotedScalarIndicator {
+						s.prevIndentColumn = tk.Position.Column
+					}
 				}
 				ctx.addToken(token.MappingValue(s.pos()))
 				s.progressColumn(ctx, 1)
@@ -786,6 +823,11 @@ func (s *Scanner) scan(ctx *Context) (pos int) {
 				token, progress := s.scanQuote(ctx, c)
 				ctx.addToken(token)
 				pos += progress
+				// If the non-whitespace character immediately following the quote is ':', the quote should be treated as a map key.
+				// Therefore, do not return and continue processing as a normal map key.
+				if ctx.currentCharWithSkipWhitespace() == ':' {
+					continue
+				}
 				return
 			}
 		case '\r', '\n':

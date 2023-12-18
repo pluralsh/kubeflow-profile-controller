@@ -1,3 +1,59 @@
+# 1.9.8 - 2022-12-19
+
+### Fix feature
+
+- Append new line at the end of file ( #329 )
+
+### Fix bugs
+
+- Fix custom marshaler ( #333, #334 )
+- Fix behavior when struct fields conflicted( #335 )
+- Fix position calculation for literal, folded and raw folded strings ( #330 )
+
+# 1.9.7 - 2022-12-03
+
+### Fix bugs
+
+- Fix handling of quoted map key ( #328 )
+- Fix resusing process of scanning context ( #322 )
+
+## v1.9.6 - 2022-10-26
+
+### New Features
+
+- Introduce MapKeyNode interface to limit node types for map key ( #312 )
+
+### Fix bugs
+
+- Quote strings with special characters in flow mode ( #270 )
+- typeError implements PrettyPrinter interface ( #280 )
+- Fix incorrect const type ( #284 )
+- Fix large literals type inference on 32 bits ( #293 )
+- Fix UTF-8 characters ( #294 )
+- Fix decoding of unknown aliases ( #317 )
+- Fix stream encoder for insert a separator between each encoded document ( #318 )
+
+### Update
+
+- Update golang.org/x/sys ( #289 )
+- Update Go version in CI ( #295 )
+- Add test cases for missing keys to struct literals ( #300 )
+
+## v1.9.5 - 2022-01-12
+
+### New Features
+
+* Add UseSingleQuote option ( #265 )
+
+### Fix bugs
+
+* Preserve defaults while decoding nested structs ( #260 )
+* Fix minor typo in decodeInit error ( #264 )
+* Handle empty sequence entries ( #275 )
+* Fix encoding of sequence with multiline string ( #276 )
+* Fix encoding of BytesMarshaler type ( #277 )
+* Fix indentState logic for multi-line value ( #278 )
+
 ## v1.9.4 - 2021-10-12
 
 ### Fix bugs
