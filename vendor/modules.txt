@@ -80,14 +80,8 @@ github.com/cenkalti/backoff
 github.com/cespare/xxhash/v2
 # github.com/crossplane/crossplane-runtime v0.15.1-0.20210930095326-d5661210733b
 ## explicit; go 1.16
-github.com/crossplane/crossplane-runtime/apis/common/v1
-github.com/crossplane/crossplane-runtime/pkg/errors
-github.com/crossplane/crossplane-runtime/pkg/meta
-github.com/crossplane/crossplane-runtime/pkg/reference
-github.com/crossplane/crossplane-runtime/pkg/resource
 # github.com/crossplane/provider-aws v0.22.0
 ## explicit; go 1.16
-github.com/crossplane/provider-aws/apis/iam/v1beta1
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
@@ -171,7 +165,6 @@ github.com/jmespath/go-jmespath
 github.com/json-iterator/go
 # github.com/kr/text v0.2.0
 ## explicit
-github.com/kr/text
 # github.com/kubeflow/kubeflow/components/admission-webhook v0.0.0-20220513185335-8be0d987f765
 ## explicit; go 1.17
 github.com/kubeflow/kubeflow/components/admission-webhook/pkg/apis/settings/v1alpha1
@@ -192,7 +185,6 @@ github.com/modern-go/concurrent
 github.com/modern-go/reflect2
 # github.com/motomux/pretty v0.0.0-20161209205251-b2aad2c9a95d
 ## explicit
-github.com/motomux/pretty
 # github.com/nxadm/tail v1.4.8
 ## explicit; go 1.13
 github.com/nxadm/tail
@@ -238,10 +230,8 @@ github.com/onsi/gomega/types
 github.com/pkg/errors
 # github.com/pluralsh/controller-reconcile-helper v0.0.0-20220524100904-61632865a5a5
 ## explicit; go 1.17
-github.com/pluralsh/controller-reconcile-helper
 # github.com/pluralsh/kubeflow-controller v0.0.0-20211119170150-da85f07f50f4
 ## explicit; go 1.17
-github.com/pluralsh/kubeflow-controller/apis/platform/v1alpha1
 # github.com/pmezard/go-difflib v1.0.0
 ## explicit
 github.com/pmezard/go-difflib/difflib
@@ -269,8 +259,6 @@ github.com/prometheus/procfs/internal/util
 github.com/sirupsen/logrus
 # github.com/spf13/afero v1.6.0
 ## explicit; go 1.13
-github.com/spf13/afero
-github.com/spf13/afero/mem
 # github.com/spf13/pflag v1.0.5
 ## explicit; go 1.12
 github.com/spf13/pflag
@@ -289,12 +277,6 @@ github.com/tidwall/match
 github.com/tidwall/pretty
 # github.com/zalando/postgres-operator v1.7.1
 ## explicit; go 1.16
-github.com/zalando/postgres-operator/pkg/apis/acid.zalan.do
-github.com/zalando/postgres-operator/pkg/apis/acid.zalan.do/v1
-github.com/zalando/postgres-operator/pkg/spec
-github.com/zalando/postgres-operator/pkg/util
-github.com/zalando/postgres-operator/pkg/util/config
-github.com/zalando/postgres-operator/pkg/util/constants
 # go.opencensus.io v0.23.0
 ## explicit; go 1.13
 go.opencensus.io
@@ -329,7 +311,6 @@ go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
 # golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
 ## explicit; go 1.17
-golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
 # golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd
@@ -475,14 +456,15 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.28.0
-## explicit; go 1.11
+# google.golang.org/protobuf v1.33.0
+## explicit; go 1.17
 google.golang.org/protobuf/encoding/protojson
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
 google.golang.org/protobuf/internal/descfmt
 google.golang.org/protobuf/internal/descopts
 google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/editiondefaults
 google.golang.org/protobuf/internal/encoding/defval
 google.golang.org/protobuf/internal/encoding/json
 google.golang.org/protobuf/internal/encoding/messageset
@@ -506,6 +488,7 @@ google.golang.org/protobuf/reflect/protoregistry
 google.golang.org/protobuf/runtime/protoiface
 google.golang.org/protobuf/runtime/protoimpl
 google.golang.org/protobuf/types/descriptorpb
+google.golang.org/protobuf/types/gofeaturespb
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/structpb
@@ -847,7 +830,6 @@ sigs.k8s.io/controller-runtime/pkg/webhook/conversion
 sigs.k8s.io/controller-runtime/pkg/webhook/internal/metrics
 # sigs.k8s.io/hierarchical-namespaces v0.9.0
 ## explicit; go 1.17
-sigs.k8s.io/hierarchical-namespaces/api/v1alpha2
 # sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6
 ## explicit; go 1.16
 sigs.k8s.io/json
