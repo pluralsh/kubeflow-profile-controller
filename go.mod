@@ -30,7 +30,7 @@ require (
 require (
 	github.com/golang/protobuf v1.5.2
 	github.com/kubeflow/kubeflow/components/admission-webhook v0.0.0-20220513185335-8be0d987f765
-	google.golang.org/protobuf v1.28.0
+	google.golang.org/protobuf v1.33.0
 )
 
 require (
